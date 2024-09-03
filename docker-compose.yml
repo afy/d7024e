@@ -1,6 +1,8 @@
-version: '3'
 services:
   test:
     build: .
     deploy:
-      replicas: 5
+      replicas: 50
+  master:
+    build: 
+        context: ./master
