@@ -2,7 +2,7 @@ services:
   test:
     build: .
     deploy:
-      replicas: 50
+      replicas: 5
   master:
     build: 
         context: ./master
