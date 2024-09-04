@@ -3,6 +3,12 @@ services:
     build: .
     deploy:
       replicas: 5
-  master:
-    build: 
-        context: ./master
+    environment:
+      BOOTSTRAP_PORT: 8008
+    depends_on:
+      - bootstrap-node
+  bootstrap-node:
+    build: .
+    ports:
+      - 8008:8008
+
