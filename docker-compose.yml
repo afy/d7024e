@@ -10,6 +10,8 @@ services:
       - bootstrap-node
     ports:
       - ${PORT}
+    volumes:
+      - .:/app
   bootstrap-node:
     build: .
     ports:
