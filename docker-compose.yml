@@ -1,6 +1,20 @@
-version: '3'
 services:
-  test:
+  node:
     build: .
     deploy:
       replicas: 5
+    environment:
+      BOOTSTRAP_PORT: ${PORT}
+      PORT: ${PORT}
+    depends_on:
+      - bootstrap-node
+    ports:
+      - ${PORT}
+  bootstrap-node:
+    build: .
+    ports:
+      - ${PORT}:${PORT}
+    environment:
+      BOOTSTRAP_PORT: ${PORT}
+      PORT: ${PORT}
+
