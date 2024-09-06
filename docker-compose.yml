@@ -4,11 +4,17 @@ services:
     deploy:
       replicas: 5
     environment:
-      BOOTSTRAP_PORT: 8008
+      BOOTSTRAP_PORT: ${PORT}
+      PORT: ${PORT}
     depends_on:
       - bootstrap-node
+    ports:
+      - ${PORT}
   bootstrap-node:
     build: .
     ports:
-      - 8008:8008
+      - ${PORT}:${PORT}
+    environment:
+      BOOTSTRAP_PORT: ${PORT}
+      PORT: ${PORT}
 
