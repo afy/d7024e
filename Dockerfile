@@ -6,9 +6,14 @@ RUN pacman -S --noconfirm go
 
 FROM base AS build
 
+WORKDIR /app
+COPY ./go.mod /app/go.mod
+
+RUN ["go", "mod", "download"]
+
 ENV PORT=$PORT
 
 COPY . /app
-WORKDIR /app
+
 
 ENTRYPOINT ["go", "run", "main.go"]

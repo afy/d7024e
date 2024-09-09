@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
+	// "os"
 )
 
 type Network struct {
@@ -12,17 +12,16 @@ type Network struct {
 
 func HandleCallback(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("CB")
+  fmt.Fprint(w, "Hello\n")
 }
 
-func Listen(ip string, port int) {
-	go func() {
-		port := os.Getenv("PORT")
-		if port == "" {
-			port = "8008"
-		}
-		http.HandleFunc("/", HandleCallback)
-		log.Fatal(http.ListenAndServe(":"+port, nil))
-	}()
+func Listen(ip string, port string) {
+  fmt.Println("Starting server at port " + port) 
+  http.HandleFunc("/", HandleCallback)
+  err := http.ListenAndServe(ip+":"+port, nil)
+  if err != nil {
+    log.Fatal()
+  }
 }
 
 func (network *Network) SendPingMessage(contact *Contact) {
