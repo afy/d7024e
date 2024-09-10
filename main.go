@@ -10,5 +10,5 @@ func main() {
   if port == "" {
     port = "8008"
   }
-  kademlia.Listen("", port)
+  kademlia.ListenUDP("", port)
 }

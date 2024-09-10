@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	// "os"
+	"net"
+  "strings"
 )
 
 type Network struct {
@@ -20,7 +21,28 @@ func Listen(ip string, port string) {
   http.HandleFunc("/", HandleCallback)
   err := http.ListenAndServe(ip+":"+port, nil)
   if err != nil {
-    log.Fatal()
+    log.Fatal(err)
+  }
+}
+
+func ListenUDP(ip string, port string) {
+  conn, err := net.ListenPacket("udp", ip+":"+port)
+  
+  if err != nil {
+    log.Fatal(err)
+  }
+  defer conn.Close()
+
+  for {
+    buf := make([]byte, 1024)
+    n, addr, err := conn.ReadFrom(buf)
+    if err != nil {
+      log.Fatal(err)
+      continue
+    }
+    
+		data := strings.TrimSpace(string(buf[:n]))
+		fmt.Printf("received: %s from %s\n", data, addr)
   }
 }
 
