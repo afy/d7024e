@@ -4,6 +4,7 @@ services:
     deploy:
       replicas: 5
     environment:
+      IS_BOOTSTRAP_NODE: false
       BOOTSTRAP_PORT: ${PORT}
       PORT: ${PORT}
     depends_on:
@@ -17,6 +18,7 @@ services:
     ports:
       - ${PORT}:${PORT}
     environment:
+      IS_BOOTSTRAP_NODE: true
       BOOTSTRAP_PORT: ${PORT}
       PORT: ${PORT}
 
