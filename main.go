@@ -21,8 +21,11 @@ func main() {
 	}
 
 	if !is_bootstrap {
-		net.JoinNetwork("bootstrap-node" + os.Getenv("BOOTSTRAP_PORT"))
+		print("not bootstrap")
+		net.JoinNetwork("bootstrap-node:" + os.Getenv("BOOTSTRAP_PORT"))
 	}
 
-	kademlia.UpdateTimers()
+	for {
+		kademlia.UpdateTimers()
+	}
 }

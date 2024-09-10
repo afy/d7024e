@@ -2,7 +2,7 @@ services:
   node:
     build: .
     deploy:
-      replicas: 5
+      replicas: 2
     environment:
       IS_BOOTSTRAP_NODE: false
       BOOTSTRAP_PORT: ${PORT}
