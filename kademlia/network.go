@@ -25,11 +25,12 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 )
 
 const MAX_REQ_BYTES int = 512 + 5
-const RESP_PORTS_RANGE_MIN = 10_000
-const RESP_PORTS_RANGE_MAX = 10_100
+const PORTS_RANGE_MIN = 10_000
+const PORTS_RANGE_MAX = 10_100
 
 const (
 	RPC_PING     byte = 0x0
@@ -38,39 +39,41 @@ const (
 	RPC_FINDVAL  byte = 0x3
 )
 
-// Object containing all information needed for
-// inter-node communication
+// Object containing all information needed for inter-node communication.
+// ports_iter contains the iteration byte of every port in the usable range.
 type Network struct {
 	routing_table *RoutingTable
-	ports_status  []bool
+	ports_status  []byte
 }
 
-func ParseData(buf []byte, n int) (byte, []byte, [][]byte) {
-	// data := strings.TrimSpace(string(buf[:n]))
-	var params = [][]byte{
-		buf[3:n],
-		[]byte("0"),
-	}
-	return buf[0], buf[1:3], params
+// Parse *incoming* data according to protocol at top of file.
+func ParseInput(buf []byte, n int) (byte, AuthUUID, []string) {
+	var (
+		rpc_code byte = buf[0]
+		uid_0    byte = buf[1]
+		uid_1    byte = buf[2]
+		p1_len   byte = buf[3]
+	)
+	param_1 := strings.TrimSpace(string(buf[5 : 5+p1_len]))
+	param_2 := strings.TrimSpace(string(buf[5+p1_len+1 : n+1])) // note: p2 not technically needed here; review how to document this
+	return rpc_code, NewAuthUUID(uid_0, uid_1), []string{param_1, param_2}
 }
 
-func NewNetwork(ip string, port string) *Network {
-	return &Network{
-		NewRoutingTable(
-			NewContact(
-				NewRandomKademliaID(),
-				ip+":"+port,
-			),
-		), []bool{},
-	}
+// Create a new Network instance with random id.
+func NewNetwork(this_ip string, port string) *Network {
+	rtable := NewRoutingTable(NewContact(NewRandomKademliaID(), this_ip+":"+port))
+	ports := make([]byte, PORTS_RANGE_MAX-PORTS_RANGE_MIN)
+	return &Network{rtable, ports}
 }
 
+// Primary listening loop at UDP, default port in [project root]/.env.
+// Listen for incoming requests and handle accordingly.
+// NOTE: responses go to a different port.
 func (network *Network) Listen() *Network {
 	conn, err := net.ListenPacket("udp", network.routing_table.me.Address)
-	if err != nil {
-		log.Fatal(err)
-	}
+	AssertAndCrash(err)
 	defer conn.Close()
+	fmt.Printf("Listening for requests on %s\n", network.routing_table.me.Address)
 
 	for {
 		buf := make([]byte, 1024)
@@ -79,7 +82,7 @@ func (network *Network) Listen() *Network {
 			log.Fatal(err)
 			continue
 		}
-		rpc, _, _ := ParseData(buf, n)
+		rpc, _, _ := ParseInput(buf, n)
 		fmt.Printf("received: %x from %s\n", rpc, addr)
 
 		switch rpc {
@@ -91,42 +94,60 @@ func (network *Network) Listen() *Network {
 			fmt.Println("store")
 
 		case RPC_FINDNODE:
-			fmt.Print("findnode")
+			fmt.Println("findnode")
 
 		case RPC_FINDVAL:
 			fmt.Println("findval")
 
 		default:
-			log.Fatal("Invalid RPC")
-			continue
+			log.Fatal("Invalid RPC: " + string(rpc))
 		}
 	}
 }
 
-func (network *Network) JoinNetwork(init_addr string) {
-	conn, err := net.Dial("udp", init_addr)
-	if err != nil {
-		log.Fatal(err)
-	}
+// Send a UDP packet to a node/client. Then, start waiting for a UDP packet on same port.
+// Response will be returned as a byte array.
+func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, param_2 []byte) []byte {
+	conn, err := net.Dial("udp", dist_ip)
+	AssertAndCrash(err)
 	defer conn.Close()
+	fmt.Printf("Sent RPC: %x to %s\n", rpc, dist_ip)
 
-	var p = []byte{
-		RPC_FINDNODE, // 2 = node lookup
-		0xff,         // UUID random component
-		0xff,         // UUID iter component
+	auid := GenerateAuthUUID(0xff)
+
+	// port := ParsePortNumber(conn.LocalAddr().String())
+	// fmt.Printf("%d\n", port)
+
+	// Format network packet (see docs)
+	var packet = []byte{
+		rpc,           // 2 = node lookup
+		auid.value[0], // UUID random component
+		auid.value[1], // UUID iter component
 	}
-	var pbody []byte
-	pbody = []byte(init_addr)
-	packet := append(p, pbody...)
-
+	len_p1 := len(string(param_1))
+	len_p2 := len(string(param_2))
+	body := []byte{
+		byte(len_p1),
+		byte(len_p2),
+	}
+	body = append(body, param_1...)
+	body = append(body, param_2...)
+	packet = append(packet, body...)
 	_, err = conn.Write(packet)
-	if err != nil {
-		log.Fatal(err)
-	}
+	AssertAndCrash(err)
+
+	// Wait for response
+	// TODO
+
+	// return data
+	return []byte{}
 }
 
-func (network *Network) ListenReply(ip string, expected_rpc int, uuid [2]byte) {
-	// TODO
+// Send a request to the bootstrap node (init_addr) to join the network.
+func (network *Network) JoinNetwork(init_addr string) {
+	p1 := []byte(init_addr) // param 1: node address to find
+	p2 := []byte{}          // param 2: none
+	network.SendAndWait(init_addr, RPC_FINDNODE, p1, p2)
 }
 
 func (network *Network) SendPingMessage(contact *Contact) {

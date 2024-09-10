@@ -2,7 +2,7 @@ package main
 
 import (
 	"d7024e/kademlia"
-	"log"
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -16,12 +16,10 @@ func main() {
 	go net.Listen()
 
 	is_bootstrap, err := strconv.ParseBool(os.Getenv("IS_BOOTSTRAP_NODE"))
-	if err != nil {
-		log.Fatal(err)
-	}
+	kademlia.AssertAndCrash(err)
 
 	if !is_bootstrap {
-		print("not bootstrap")
+		fmt.Println("Attempting to join network...")
 		net.JoinNetwork("bootstrap-node:" + os.Getenv("BOOTSTRAP_PORT"))
 	}
 
