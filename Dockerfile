@@ -12,6 +12,7 @@ COPY ./go.mod /app/go.mod
 RUN ["go", "mod", "download"]
 
 ENV PORT=$PORT
+ENV IS_BOOTSTRAP_NODE=$IS_BOOTSTRAP_NODE
 
 COPY . /app
 
