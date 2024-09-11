@@ -137,10 +137,21 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, pa
 	AssertAndCrash(err)
 
 	// Wait for response
-	// TODO
+  resp_port := 10000
+  resp_addr := fmt.Sprintf(":%d", resp_port)
+	resp_conn, err := net.ListenPacket("udp", resp_addr)
+	AssertAndCrash(err)
+	defer resp_conn.Close()
+	fmt.Printf("Listening for response on %s\n", resp_addr)
+
+  resp_buf := make([]byte, 1024)
+  n, addr, err := resp_conn.ReadFrom(resp_buf)
+  AssertAndCrash(err)
+  resp_data := strings.TrimSpace(string(resp_buf[:n]))
+  fmt.Printf("received response: %s from %s\n", resp_data, addr)
 
 	// return data
-	return []byte{}
+  return resp_buf[:n]
 }
 
 // Send a request to the bootstrap node (init_addr) to join the network.
