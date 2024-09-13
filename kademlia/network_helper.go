@@ -1,5 +1,9 @@
 package kademlia
 
+// File used to simplify network.go
+// by collecting all functionality that support the RPCs,
+// like UDP listeners and support structs.
+
 // ===== REQ UDP PROTOCOL
 // Byte 0:
 //		0x0: PING
@@ -18,8 +22,8 @@ package kademlia
 // Max message size = 256*2 + 3 bytes
 
 // ===== RESP UDP PROTOCOL
-// Byte 1-END: Data
-// (Per-request data is not stored in-flight)
+// Byte 0-1: Auth UUID
+// byte 2-END: Data
 
 import (
 	"fmt"
@@ -28,10 +32,9 @@ import (
 	"strings"
 )
 
-// Constants
-const MAX_PACKET_SIZE = 1024
-const PRANGE_MIN = 10_000
-const PRANGE_MAX = 10_100
+const MAX_PACKET_SIZE = 1024 // UDP packet buffer size.
+const PRANGE_MIN = 10_000    // Lower component of port range.
+const PRANGE_MAX = 10_100    // Upper component of port range.
 const (
 	RPC_PING     byte = 0x0
 	RPC_STORE    byte = 0x1
@@ -47,18 +50,18 @@ type PortData struct {
 	open    bool
 }
 
-// Parse from Listen, send to RPC handlers to simplify func params.
+// Parse from Listen(), send to RPC handlers to simplify general func params.
 type MessageMetadata struct {
 	auuid *AuthUUID
 	addr  string
 }
 
-// Return Message metadata instance for main listener
+// Return Message metadata instance for main listener.
 func NewMessageMetadata(uuid *AuthUUID, addr string) MessageMetadata {
 	return MessageMetadata{uuid, addr}
 }
 
-// Get the first open port from the dynamic_ports list
+// Get the first open port from the dynamic_ports list.
 func (network *Network) GetFirstOpenPort() *PortData {
 	max_ind := PRANGE_MAX - PRANGE_MIN
 	for i := 0; i <= max_ind; i++ {
@@ -89,12 +92,13 @@ func ParseInput(buf []byte, n int) (byte, *AuthUUID, [][]byte) {
 
 // Primary listening loop at UDP, default port in [project root]/.env.
 // Listen for incoming requests and handle accordingly.
+//
 // NOTE: responses go to a different port.
 func (network *Network) Listen() *Network {
 	conn, err := net.ListenPacket("udp", network.routing_table.me.Address)
 	AssertAndCrash(err)
 	defer conn.Close()
-	fmt.Printf("Main: Listening for requests on %s\n", network.routing_table.me.Address)
+	fmt.Printf("Main listener: Listening for requests on %s\n", network.routing_table.me.Address)
 
 	for {
 		buf := make([]byte, MAX_PACKET_SIZE)
@@ -104,7 +108,7 @@ func (network *Network) Listen() *Network {
 			continue
 		}
 		rpc, auuid, params := ParseInput(buf, n)
-		fmt.Printf("Received: %x from %s\n", rpc, addr)
+		fmt.Printf("Main listener: Received: %x from %s\n", rpc, addr)
 
 		meta := NewMessageMetadata(auuid, addr.String())
 		switch rpc {
@@ -122,13 +126,12 @@ func (network *Network) Listen() *Network {
 			network.SendFindDataMessage(&meta, params[0])
 
 		default:
-			panic("Invalid RPC: " + string(rpc))
+			fmt.Printf("Main listener: Invalid RPC: %s\n", string(rpc))
 		}
 	}
 }
 
 // Send a UDP packet to a node/client. Then, start waiting for a UDP packet on same port.
-// Response will be returned as a byte array.
 func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, param_2 []byte) []byte {
 	req_port := network.GetFirstOpenPort()
 	req_port.open = false
@@ -140,10 +143,10 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, pa
 		LocalAddr: addr,
 	}
 
-	// No defer; close connection after sending UDP packet
+	// No defer; close connection directly after sending UDP packet
 	req_conn, err := dialer.Dial("udp", dist_ip)
 	AssertAndCrash(err)
-	fmt.Printf("Sent RPC: %x to %s from %s\n", rpc, dist_ip, ":"+req_port.num_str)
+	fmt.Printf("RPC Listener: Sent RPC %x to %s from %s\n", rpc, dist_ip, ":"+req_port.num_str)
 
 	// Format network packet (see docs)
 	auid_req := GenerateAuthUUID(req_port.iter)
@@ -167,7 +170,7 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, pa
 	resp_conn, err := net.ListenPacket("udp", ":"+req_port.num_str)
 	AssertAndCrash(err)
 	defer resp_conn.Close()
-	fmt.Printf("Waiting for RPC response on %s\n", ":"+req_port.num_str)
+	fmt.Printf("RPC Listener: Waiting on %s\n", ":"+req_port.num_str)
 
 	ret_buf := make([]byte, MAX_PACKET_SIZE)
 	for {
@@ -175,12 +178,12 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, pa
 		n, addr, err := resp_conn.ReadFrom(resp_buf)
 		AssertAndCrash(err)
 		resp_data := strings.TrimSpace(string(resp_buf[:n]))
-		fmt.Printf("Received response: %s from %s\n", resp_data, addr)
+		fmt.Printf("RPC Listener: Received response: %s from %s\n", resp_data, addr)
 
-		auid_resp := NewAuthUUID(resp_data[1], resp_data[2])
+		auid_resp := NewAuthUUID(resp_buf[0], resp_buf[1])
 		if auid_resp.Equals(auid_req) {
-			fmt.Println("Matching AAUID; breaking loop")
-			ret_buf = resp_buf
+			fmt.Println("RPC Listener: Matching AAUID; breaking loop")
+			ret_buf = resp_buf[2:]
 			break
 		}
 	}

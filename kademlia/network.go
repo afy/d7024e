@@ -7,7 +7,6 @@ import (
 )
 
 // Object containing all information needed for inter-node communication.
-// ports_iter contains the iteration byte of every port in the usable range.
 type Network struct {
 	routing_table *RoutingTable
 	dynamic_ports []*PortData
@@ -18,7 +17,7 @@ func NewNetwork(this_ip string, port string) *Network {
 	addr := this_ip + ":" + port
 	rtable := NewRoutingTable(NewContact(NewRandomKademliaID(), addr))
 	var ports [PRANGE_MAX - PRANGE_MIN + 1]*PortData
-	for pi, _ := range ports {
+	for pi := range ports {
 		ports[pi] = &PortData{
 			PRANGE_MIN + pi,
 			strconv.Itoa(PRANGE_MIN + pi),
@@ -45,11 +44,17 @@ func (network *Network) SendPingMessage(meta *MessageMetadata, target_id []byte)
 // Get "alpha" closest nodes from k-buckets and send simultaneous reqs.
 // collect a list of the k-closest nodes and send back to client.
 func (network *Network) SendFindContactMessage(meta *MessageMetadata, target_id []byte) {
+
+	// %%%%%%%%% TEST FUNCTION, rewrite this
 	c, err := net.Dial("udp", meta.addr)
 	AssertAndCrash(err)
 	defer c.Close()
 	fmt.Printf("Sending response to %s\n", meta.addr)
-	c.Write([]byte("RESPONSE HERE"))
+
+	var body []byte
+	body = append([]byte{}, meta.auuid.value[:]...)
+	body = append(body, []byte("RESPONSE HERE")...)
+	c.Write(body)
 }
 
 // Same as findnode, but if the target is node, return a value instead.
