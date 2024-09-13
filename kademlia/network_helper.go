@@ -30,8 +30,8 @@ import (
 
 // Constants
 const MAX_PACKET_SIZE = 1024
-const PORTS_RANGE_MIN = 10_000
-const PORTS_RANGE_MAX = 10_100
+const PRANGE_MIN = 10_000
+const PRANGE_MAX = 10_100
 const (
 	RPC_PING     byte = 0x0
 	RPC_STORE    byte = 0x1
@@ -47,32 +47,44 @@ type PortData struct {
 	open    bool
 }
 
+// Parse from Listen, send to RPC handlers to simplify func params.
+type MessageMetadata struct {
+	auuid *AuthUUID
+	addr  string
+}
+
+// Return Message metadata instance for main listener
+func NewMessageMetadata(uuid *AuthUUID, addr string) MessageMetadata {
+	return MessageMetadata{uuid, addr}
+}
+
 // Get the first open port from the dynamic_ports list
 func (network *Network) GetFirstOpenPort() *PortData {
-	for i := PORTS_RANGE_MIN; i <= PORTS_RANGE_MAX; i++ {
+	max_ind := PRANGE_MAX - PRANGE_MIN
+	for i := 0; i <= max_ind; i++ {
 		port := network.dynamic_ports[i]
 
 		// Using port.open is more reliable than attempting to bind.
 		// It is read-only here, port should only be set in SendAndWait()
-		if port.open {
+		if !port.open {
 			return port
 		}
 	}
 	panic("No open ports!")
 }
 
-// Parse *incoming* data according to protocol at top of file.
-func ParseInput(buf []byte, n int) (byte, *AuthUUID, []string) {
+// Parse *incoming* data in main listener according to protocol at top of file.
+func ParseInput(buf []byte, n int) (byte, *AuthUUID, [][]byte) {
 	var (
 		rpc_code byte = buf[0]
 		uid_0    byte = buf[1]
 		uid_1    byte = buf[2]
 		p1_len   byte = buf[3]
 	)
-	param_1 := strings.TrimSpace(string(buf[5 : 5+p1_len]))
-	param_2 := strings.TrimSpace(string(buf[5+p1_len+1 : n+1])) // note: p2 not technically needed here; review how to document this
+	param_1 := buf[5 : 5+p1_len]
+	param_2 := buf[5+p1_len+1 : n+1] // note: p2 not technically needed here; review how to document this
 	auth := NewAuthUUID(uid_0, uid_1)
-	return rpc_code, &auth, []string{param_1, param_2}
+	return rpc_code, &auth, [][]byte{param_1, param_2}
 }
 
 // Primary listening loop at UDP, default port in [project root]/.env.
@@ -91,22 +103,23 @@ func (network *Network) Listen() *Network {
 			log.Fatal(err)
 			continue
 		}
-		rpc, _, _ := ParseInput(buf, n)
+		rpc, auuid, params := ParseInput(buf, n)
 		fmt.Printf("Received: %x from %s\n", rpc, addr)
 
+		meta := NewMessageMetadata(auuid, addr.String())
 		switch rpc {
 
 		case RPC_PING:
-			//network.SendPingMessage()
+			network.SendPingMessage(&meta, params[0])
 
 		case RPC_STORE:
-			//network.SendStoreMessage()
+			network.SendStoreMessage(&meta, params[0], params[1])
 
 		case RPC_FINDNODE:
-			//network.SendFindContactMessage()
+			network.SendFindContactMessage(&meta, params[0])
 
 		case RPC_FINDVAL:
-			//network.SendFindDataMessage()
+			network.SendFindDataMessage(&meta, params[0])
 
 		default:
 			panic("Invalid RPC: " + string(rpc))
