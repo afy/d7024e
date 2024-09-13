@@ -1,5 +1,8 @@
 package kademlia
 
+// This file contains helper functions/constants that dont directly
+// depend on any other structs.
+
 import (
 	"log"
 	"strconv"
@@ -10,7 +13,7 @@ import (
 // Sue me.
 func AssertAndCrash(err error) {
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 }
 

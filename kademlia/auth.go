@@ -1,6 +1,7 @@
 package kademlia
 
 import (
+	"bytes"
 	"crypto/rand"
 	"log"
 )
@@ -26,4 +27,9 @@ func GenerateAuthUUID(iter byte) AuthUUID {
 		log.Fatal(err)
 	}
 	return AuthUUID{[2]byte{rnd[0], iter}}
+}
+
+// Compare two uuids
+func (auth_uuid *AuthUUID) Equals(a AuthUUID) bool {
+	return bytes.Equal(auth_uuid.value[:], a.value[:])
 }
