@@ -1,27 +1,29 @@
 package main
 
 import (
-  "fmt"
-  "net/http"
-  "os"
-  "io"
+	"d7024e/kademlia"
+	"fmt"
+	"os"
+	"strconv"
 )
 
-func exampleGet(w http.ResponseWriter, r *http.Request) {
-  fmt.Println("Recieved request on /") 
-  io.WriteString(w, "Hello\n")
-}
-
 func main() {
-  port := os.Getenv("PORT")
-  if port == "" {
-    port = "8008"
-  }
-  fmt.Println(port)
-  fmt.Printf("Starting server at port %s\n", port)
-  http.HandleFunc("/", exampleGet)
-  err := http.ListenAndServe(fmt.Sprintf(":%s", port), nil)
-  if err != nil {
-    fmt.Println("Fatal error!")
-  }
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8008"
+	}
+	net := kademlia.NewNetwork("0.0.0.0", port)
+	go net.Listen()
+
+	is_bootstrap, err := strconv.ParseBool(os.Getenv("IS_BOOTSTRAP_NODE"))
+	kademlia.AssertAndCrash(err)
+
+	if !is_bootstrap {
+		fmt.Println("Attempting to join network...")
+		net.JoinNetwork("bootstrap-node:" + os.Getenv("BOOTSTRAP_PORT"))
+	}
+
+	for {
+		kademlia.UpdateTimers()
+	}
 }
