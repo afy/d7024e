@@ -22,12 +22,12 @@ const (
 // Function to check if the TypeMessage is valid
 func (typeMessage TypeMessage) IsValid() error {
 	switch typeMessage {
-	case ERROR, STORE, STORE_CONTACT, FIND_CONTACT, FIN_VALUE:
+	case ERROR, STORE, STORE_CONTACT, FIND_CONTACT, FIND_VALUE:
 		return nil
 	}
 	return errors.New("Invalid type message")
 }
-
+ 
 // Store represents the key-value pair being stored
 type Store struct {
 	Key *Key
@@ -80,7 +80,7 @@ func (n *Node) Store(storeRequest *Store) error {
 	if nodeEntry := n.dataStore[storeRequest.Key.ID];
 	n.dataStore[storeRequest.Key.ID] = Value{
 		Value: storeRequest.Value,
-		Version: time.Now().Unix(),
+		Version: time.Now().Unix()
 	} 
 
 
