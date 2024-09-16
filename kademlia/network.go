@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 )
 
 // Object containing all information needed for inter-node communication.
@@ -58,8 +59,53 @@ func (network *Network) SendFindContactMessage(meta *MessageMetadata, target_id 
 }
 
 // Same as findnode, but if the target is node, return a value instead.
-func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []byte) {
+func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []byte) ([]byte, error) {
 
+	// Converts the bytes slice target_id to a KademliaID 
+	targetID := NewKademliaID(fmt.Sprintf("%x", target_id))
+
+	// Find closest contacts using alpha 
+	closestContacts := network.routing_table.FindClosestContacts(targetID, alpha)
+
+	// Create a FindData message to be sent to the closest nodes
+	findDataMessage := NewFindDataMessage(meta.auuid, targetID)
+
+	// Iterate over closest contacts and send FindData requests
+	for _, contact := range closestContacts {
+		messageBytes, err := json.Marshal(findDataMessage)
+		if err != nil {
+			return nil, fmt-Errorf("Failed to marshal FindDataMessage: %w", err)
+		}
+
+		// Using the SendAndWait function instead of direct send
+		response := network.SendAndWait(contact.Address, RPC_FINDVAL, targetID[:], []bytes{})
+		
+		// Check if response is empty during the network communication failure
+		if len(response) == 0 {
+			fmt.print("No response or invalid response received from %s\n", contact.Address)
+			continue // Skip to the next contact
+		}
+
+		// Parse the response to get the data
+		var responseMessage FindDataResponseMessage
+		err = json.Unmarshal(response, &responseMessage)
+		if err != nil {
+			fmt.Printf("Failed to unmarshal FindDataResponseMessage: %v\n", contact.Address, err)
+			continue // Skip responses that cannot be parsed
+		}
+
+		// Check if the data was found
+		if responseMessage.Found {
+			return responseMessage.Data, nil // If the response contains data, return the found data
+		} else {
+			// If the target is a node, return the contact information
+			fmt.Printf("Target %s is a node; returning contact information for node %s\n", targetID, contact.Address)
+			return []byte(contact.Address), nil
+		}
+	}
+
+	// If no data or node is found in any response
+	return nil, fmt.Errorf("Data or node not found")
 }
 
 // Same as PING but send additional metadata that gets stored. Send an OK to original client.
