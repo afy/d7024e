@@ -5,6 +5,9 @@ import (
 	"net"
 	"strconv"
 	"time"
+	"encoding/json"
+	"fmt"
+	"bytes"
 )
 
 // Object containing all information needed for inter-node communication.
@@ -58,6 +61,8 @@ func (network *Network) SendFindContactMessage(meta *MessageMetadata, target_id 
 	c.Write(body)
 }
 
+const alpha = 8
+
 // Same as findnode, but if the target is node, return a value instead.
 func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []byte) ([]byte, error) {
 
@@ -74,15 +79,15 @@ func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []b
 	for _, contact := range closestContacts {
 		messageBytes, err := json.Marshal(findDataMessage)
 		if err != nil {
-			return nil, fmt-Errorf("Failed to marshal FindDataMessage: %w", err)
+			return nil, fmt.Errorf("Failed to marshal FindDataMessage: %w", err)
 		}
 
 		// Using the SendAndWait function instead of direct send
-		response := network.SendAndWait(contact.Address, RPC_FINDVAL, targetID[:], []bytes{})
+		response := network.SendAndWait(contact.Address, RPC_FINDVAL, targetID[:], []byte{})
 		
 		// Check if response is empty during the network communication failure
 		if len(response) == 0 {
-			fmt.print("No response or invalid response received from %s\n", contact.Address)
+			fmt.Printf("No response or invalid response received from %s\n", contact.Address)
 			continue // Skip to the next contact
 		}
 
