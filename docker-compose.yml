@@ -21,4 +21,3 @@ services:
       IS_BOOTSTRAP_NODE: true
       BOOTSTRAP_PORT: ${PORT}
       PORT: ${PORT}
-
