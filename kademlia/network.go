@@ -1,13 +1,9 @@
 package kademlia
 
 import (
-	"fmt"
 	"net"
 	"strconv"
-	"time"
-	"encoding/json"
 	"fmt"
-	"bytes"
 )
 
 // Object containing all information needed for inter-node communication.
@@ -72,15 +68,9 @@ func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []b
 	// Find closest contacts using alpha 
 	closestContacts := network.routing_table.FindClosestContacts(targetID, alpha)
 
-	// Create a FindData message to be sent to the closest nodes
-	findDataMessage := NewFindDataMessage(meta.auuid, targetID)
-
 	// Iterate over closest contacts and send FindData requests
 	for _, contact := range closestContacts {
-		messageBytes, err := json.Marshal(findDataMessage)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to marshal FindDataMessage: %w", err)
-		}
+		fmt.Printf("Sending FindData request to: %s\n", contact.Address)
 
 		// Using the SendAndWait function instead of direct send
 		response := network.SendAndWait(contact.Address, RPC_FINDVAL, targetID[:], []byte{})
@@ -91,26 +81,20 @@ func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []b
 			continue // Skip to the next contact
 		}
 
-		// Parse the response to get the data
-		var responseMessage FindDataResponseMessage
-		err = json.Unmarshal(response, &responseMessage)
-		if err != nil {
-			fmt.Printf("Failed to unmarshal FindDataResponseMessage: %v\n", contact.Address, err)
-			continue // Skip responses that cannot be parsed
-		}
-
-		// Check if the data was found
-		if responseMessage.Found {
-			return responseMessage.Data, nil // If the response contains data, return the found data
-		} else {
-			// If the target is a node, return the contact information
-			fmt.Printf("Target %s is a node; returning contact information for node %s\n", targetID, contact.Address)
-			return []byte(contact.Address), nil
+		// Check if the first byte of the response indicates data found
+		if len(response) > 1 && response[0] == 0x01 {
+			// Data found in the response
+			fmt.Printf("Data found for target %x at %s\n", target_id, contact.Address)
+			return response[1:], nil // Return the found data, skipping the success byte
+		} else if len(response) > 1 && response[0] == 0x00 {
+				// Target is a node, not data
+				fmt.Printf("Target %x is a node; continuing search.\n", target_id)
+				continue
 		}
 	}
 
 	// If no data or node is found in any response
-	return nil, fmt.Errorf("Data or node not found")
+	return nil, fmt.Errorf("Data not found for target %x", targetID)
 }
 
 // Same as PING but send additional metadata that gets stored. Send an OK to original client.
