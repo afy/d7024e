@@ -11,6 +11,8 @@ COPY ./go.mod /app/go.mod
 
 RUN ["go", "mod", "download"]
 
+COPY ./cli.sh /usr/bin/kad
+
 ENV PORT=$PORT
 ENV IS_BOOTSTRAP_NODE=$IS_BOOTSTRAP_NODE
 
