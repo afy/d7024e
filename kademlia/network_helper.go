@@ -190,3 +190,26 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, pa
 
 	return ret_buf
 }
+
+// SendResponse function to send a response back to the specified addres
+func (network *Network) SendResponse(addr string, response []byte ){
+	responseAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		fmt.Printf("Error resolving %s: %v\n", addr, err)
+		return
+	}
+
+	conn , err := net.DialUDP("udp", nil , responseAddr)
+	if err != nil {
+		fmt.Printf("Error dialing UDP: %vn", err)
+		return
+	}
+	defer conn.Close()
+
+	_, err = conn.Write(response)
+	if err != nil {
+		fmt.Printf("Error sending response: %vn", err)
+	} else {
+		fmt.Printf("Response sent to: %vn", addr)
+	}
+}
