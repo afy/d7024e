@@ -1,9 +1,9 @@
 package kademlia
 
 import (
+	"fmt"
 	"net"
 	"strconv"
-	"fmt"
 )
 
 // Object containing all information needed for inter-node communication.
@@ -36,10 +36,33 @@ func (network *Network) JoinNetwork(init_addr string) {
 	fmt.Printf("Response from server: %s\n", string(resp))
 }
 
-// If target is this node, send ping response to original requester.
-// Otherwise, find the closest node and send a PING rpc to it.
+// SendPingMessage handles a PING request.
+// If the target is this node, it sends a response back to original requester.
+// Otherwise, it finds the closest node and send a PING rpc to it.
 func (network *Network) SendPingMessage(meta *MessageMetadata, target_id []byte) {
+    target := NewKademliaID(string(target_id))
+
+    if target.Equals(network.routing_table.me.ID) {
+        fmt.Printf("Responding to PING from %s\n", meta.addr)
+				// Need to create a SendResponse funtion ??
+        response := []byte{meta.auuid.value[0], meta.auuid.value[1]} 
+        network.SendResponse(meta.addr, response)                   
+        return
+    } else {
+        fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
+        closestContacts := network.routing_table.FindClosestContacts(target, 1)
+
+        if len(closestContacts) == 0 {
+            fmt.Printf("No closest node found")
+            return
+        }
+
+        closestNode := closestContacts[0]
+        pingMessage := append([]byte{RPC_PING}, target_id...) 
+        network.SendAndWait(closestNode.Address, RPC_PING, pingMessage, nil) 
+    }
 }
+
 
 // Get "alpha" closest nodes from k-buckets and send simultaneous reqs.
 // collect a list of the k-closest nodes and send back to client.
@@ -62,10 +85,10 @@ const alpha = 8
 // Same as findnode, but if the target is node, return a value instead.
 func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []byte) ([]byte, error) {
 
-	// Converts the bytes slice target_id to a KademliaID 
+	// Converts the bytes slice target_id to a KademliaID
 	targetID := NewKademliaID(fmt.Sprintf("%x", target_id))
 
-	// Find closest contacts using alpha 
+	// Find closest contacts using alpha
 	closestContacts := network.routing_table.FindClosestContacts(targetID, alpha)
 
 	// Iterate over closest contacts and send FindData requests
@@ -74,7 +97,7 @@ func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []b
 
 		// Using the SendAndWait function instead of direct send
 		response := network.SendAndWait(contact.Address, RPC_FINDVAL, targetID[:], []byte{})
-		
+
 		// Check if response is empty during the network communication failure
 		if len(response) == 0 {
 			fmt.Printf("No response or invalid response received from %s\n", contact.Address)
@@ -87,9 +110,9 @@ func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []b
 			fmt.Printf("Data found for target %x at %s\n", target_id, contact.Address)
 			return response[1:], nil // Return the found data, skipping the success byte
 		} else if len(response) > 1 && response[0] == 0x00 {
-				// Target is a node, not data
-				fmt.Printf("Target %x is a node; continuing search.\n", target_id)
-				continue
+			// Target is a node, not data
+			fmt.Printf("Target %x is a node; continuing search.\n", target_id)
+			continue
 		}
 	}
 
