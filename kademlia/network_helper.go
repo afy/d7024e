@@ -133,6 +133,7 @@ func (network *Network) Listen() *Network {
 
 // Send a UDP packet to a node/client. Then, start waiting for a UDP packet on same port.
 func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, param_2 []byte) []byte {
+  fmt.Printf("RPC Listener: Sending RPC %x to %s\n", rpc, dist_ip)
 	req_port := network.GetFirstOpenPort()
 	req_port.open = false
 	defer func(port *PortData) { port.open = true }(req_port)

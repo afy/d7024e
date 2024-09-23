@@ -41,6 +41,7 @@ func (network *Network) JoinNetwork(init_addr string) {
 // Otherwise, it finds the closest node and send a PING rpc to it.
 func (network *Network) SendPingMessage(meta *MessageMetadata, target_id []byte) {
     target := NewKademliaID(string(target_id))
+    fmt.Printf("Received PING from %s\n", meta.addr)
 
     if target.Equals(network.routing_table.me.ID) {
         fmt.Printf("Responding to PING from %s\n", meta.addr)

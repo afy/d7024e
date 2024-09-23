@@ -1,1 +1,3 @@
-echo "Hello world!" > /tmp/kademlia_pipe
+echo "$@" > /tmp/kademlia_pipe
+read -r line < /tmp/kademlia_resp
+echo "$line"
