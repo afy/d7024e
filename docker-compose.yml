@@ -7,6 +7,7 @@ services:
       IS_BOOTSTRAP_NODE: false
       BOOTSTRAP_PORT: ${PORT}
       PORT: ${PORT}
+      BOOTSTRAP_NODE_ID: ${BOOTSTRAP_NODE_ID}
     depends_on:
       - bootstrap-node
     ports:
@@ -21,4 +22,4 @@ services:
       IS_BOOTSTRAP_NODE: true
       BOOTSTRAP_PORT: ${PORT}
       PORT: ${PORT}
-
+      BOOTSTRAP_NODE_ID: ${BOOTSTRAP_NODE_ID}

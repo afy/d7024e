@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -71,7 +72,13 @@ type Network struct {
 // Create a new Network instance with random id.
 func NewNetwork(this_ip string, port string) *Network {
 	addr := this_ip + ":" + port
-	rtable := NewRoutingTable(NewContact(NewRandomKademliaID(), addr))
+	is_bootstrap, _ := strconv.ParseBool(os.Getenv("IS_BOOTSTRAP_NODE"))
+	var rtable *RoutingTable
+	if !is_bootstrap {
+		rtable = NewRoutingTable(NewContact(NewRandomKademliaID(), addr))
+	} else {
+		rtable = NewRoutingTable(NewContact(NewKademliaID(os.Getenv("BOOTSTRAP_NODE_ID")), addr))
+	}
 	var ports [PRANGE_MAX - PRANGE_MIN + 1]*PortData
 	for pi := range ports {
 		ports[pi] = &PortData{
@@ -239,10 +246,13 @@ func (network *Network) Send(addr string, response []byte) {
 
 // Send a request to the bootstrap node (init_addr) to join the network.
 func (network *Network) JoinNetwork(init_addr string) {
+	bootstrap_id := NewKademliaID(os.Getenv("BOOTSTRAP_NODE_ID"))
+	network.routing_table.AddContact(NewContact(bootstrap_id, init_addr))
 	resp := network.SendAndWait(init_addr, RPC_FINDNODE, []byte(init_addr), []byte{})
 	fmt.Printf("Response from server: %s\n", string(resp))
 }
 
+// SendPingMessage handles a PING request.
 // If target is this node, send ping response to original requester.
 // Otherwise, find the closest node and send a PING rpc to it.
 func (network *Network) SendPingMessage(meta *RequestMetadata, target_id []byte) {
@@ -282,9 +292,44 @@ func (network *Network) SendFindContactMessage(meta *RequestMetadata, target_id 
 	c.Write(body)
 }
 
+const alpha = 8
+
 // Same as findnode, but if the target is node, return a value instead.
 func (network *Network) SendFindDataMessage(meta *RequestMetadata, target_id []byte) {
 
+	// Converts the bytes slice target_id to a KademliaID
+	targetID := NewKademliaID(fmt.Sprintf("%x", target_id))
+
+	// Find closest contacts using alpha
+	closestContacts := network.routing_table.FindClosestContacts(targetID, alpha)
+
+	// Iterate over closest contacts and send FindData requests
+	for _, contact := range closestContacts {
+		fmt.Printf("Sending FindData request to: %s\n", contact.Address)
+
+		// Using the SendAndWait function instead of direct send
+		response := network.SendAndWait(contact.Address, RPC_FINDVAL, targetID[:], []byte{})
+
+		// Check if response is empty during the network communication failure
+		if len(response) == 0 {
+			fmt.Printf("No response or invalid response received from %s\n", contact.Address)
+			continue // Skip to the next contact
+		}
+
+		// Check if the first byte of the response indicates data found
+		if len(response) > 1 && response[0] == 0x01 {
+			// Data found in the response
+			fmt.Printf("Data found for target %x at %s\n", target_id, contact.Address)
+			//return response[1:], nil // Return the found data, skipping the success byte
+		} else if len(response) > 1 && response[0] == 0x00 {
+			// Target is a node, not data
+			fmt.Printf("Target %x is a node; continuing search.\n", target_id)
+			continue
+		}
+	}
+
+	// If no data or node is found in any response
+	//return nil, fmt.Errorf("Data not found for target %x", targetID)
 }
 
 // Same as PING but send additional metadata that gets stored. Send an OK to original client.
