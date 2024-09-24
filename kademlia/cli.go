@@ -47,7 +47,8 @@ func (network *Network) InitializeCLI() {
       target := NewKademliaID(cmd[1])
       closestContacts := network.routing_table.FindClosestContacts(target, 1)
       if len(closestContacts) == 0 {
-        fmt.Printf("No closest node found")
+        fmt.Println("No closest node found")
+        fresp.WriteString("No closest node found\n")
         continue
       }
       closestNode := closestContacts[0]

@@ -3,6 +3,8 @@ package kademlia
 import (
 	"encoding/hex"
 	"math/rand"
+  "fmt"
+  "strings"
 )
 
 // the static number of bytes in a KademliaID
@@ -13,6 +15,7 @@ type KademliaID [IDLength]byte
 
 // NewKademliaID returns a new instance of a KademliaID based on the string input
 func NewKademliaID(data string) *KademliaID {
+  data = strings.Replace(data, "\x00", "", -1) 
 	decoded, _ := hex.DecodeString(data)
 
 	newKademliaID := KademliaID{}

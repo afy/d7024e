@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+  "os"
 )
 
 // Object containing all information needed for inter-node communication.
@@ -14,8 +15,14 @@ type Network struct {
 
 // Create a new Network instance with random id.
 func NewNetwork(this_ip string, port string) *Network {
-	addr := this_ip + ":" + port
-	rtable := NewRoutingTable(NewContact(NewRandomKademliaID(), addr))
+	addr := this_ip + ":" + port 
+	is_bootstrap, _ := strconv.ParseBool(os.Getenv("IS_BOOTSTRAP_NODE"))
+  var rtable *RoutingTable
+  if !is_bootstrap {
+    rtable = NewRoutingTable(NewContact(NewRandomKademliaID(), addr))
+  } else {
+    rtable = NewRoutingTable(NewContact(NewKademliaID(os.Getenv("BOOTSTRAP_NODE_ID")), addr))
+  }
 	var ports [PRANGE_MAX - PRANGE_MIN + 1]*PortData
 	for pi := range ports {
 		ports[pi] = &PortData{
@@ -32,7 +39,9 @@ func NewNetwork(this_ip string, port string) *Network {
 func (network *Network) JoinNetwork(init_addr string) {
 	p1 := []byte(init_addr) // param 1: node address to find
 	p2 := []byte{}          // param 2: none
+  bootstrap_id := NewKademliaID(os.Getenv("BOOTSTRAP_NODE_ID"))
 	resp := network.SendAndWait(init_addr, RPC_FINDNODE, p1, p2)
+  network.routing_table.AddContact(NewContact(bootstrap_id, init_addr))
 	fmt.Printf("Response from server: %s\n", string(resp))
 }
 
@@ -40,28 +49,30 @@ func (network *Network) JoinNetwork(init_addr string) {
 // If the target is this node, it sends a response back to original requester.
 // Otherwise, it finds the closest node and send a PING rpc to it.
 func (network *Network) SendPingMessage(meta *MessageMetadata, target_id []byte) {
-    target := NewKademliaID(string(target_id))
-    fmt.Printf("Received PING from %s\n", meta.addr)
+  target_string := string(target_id)
+  fmt.Println(target_string)
+  target := NewKademliaID(target_string)
+  fmt.Printf("Received PING from %s\n", meta.addr)
 
-    if target.Equals(network.routing_table.me.ID) {
-        fmt.Printf("Responding to PING from %s\n", meta.addr)
-				// Need to create a SendResponse funtion ??
-        response := []byte{meta.auuid.value[0], meta.auuid.value[1]} 
-        network.SendResponse(meta.addr, response)                   
-        return
-    } else {
-        fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
-        closestContacts := network.routing_table.FindClosestContacts(target, 1)
+  if target.Equals(network.routing_table.me.ID) {
+    fmt.Printf("Responding to PING from %s\n", meta.addr)
+    // Need to create a SendResponse funtion ??
+    response := []byte{meta.auuid.value[0], meta.auuid.value[1]} 
+    network.SendResponse(meta.addr, response)                   
+    return
+  } else {
+    fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
+    closestContacts := network.routing_table.FindClosestContacts(target, 1)
 
-        if len(closestContacts) == 0 {
-            fmt.Printf("No closest node found")
-            return
-        }
-
-        closestNode := closestContacts[0]
-        pingMessage := append([]byte{RPC_PING}, target_id...) 
-        network.SendAndWait(closestNode.Address, RPC_PING, pingMessage, nil) 
+    if len(closestContacts) == 0 {
+      fmt.Printf("No closest node found")
+      return
     }
+
+    closestNode := closestContacts[0]
+    pingMessage := append([]byte{RPC_PING}, target_id...) 
+    network.SendAndWait(closestNode.Address, RPC_PING, pingMessage, nil) 
+  }
 }
 
 
