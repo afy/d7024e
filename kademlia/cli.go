@@ -9,17 +9,17 @@ import (
 )
 
 func (network *Network) InitializeCLI() {
-	pipePath := "/tmp/kademlia_pipe"
-	respPath := "/tmp/kademlia_resp"
-	syscall.Mkfifo(pipePath, 0666)
-	syscall.Mkfifo(respPath, 0666)
+	pipe_path := "/tmp/kademlia_pipe"
+	resp_path := "/tmp/kademlia_resp"
+	syscall.Mkfifo(pipe_path, 0666)
+	syscall.Mkfifo(resp_path, 0666)
 
-	fpipe, _ := os.OpenFile(pipePath, syscall.O_RDWR, os.ModeNamedPipe)
-	fresp, _ := os.OpenFile(respPath, syscall.O_WRONLY, os.ModeNamedPipe)
+	fpipe, _ := os.OpenFile(pipe_path, syscall.O_RDWR, os.ModeNamedPipe)
+	fresp, _ := os.OpenFile(resp_path, syscall.O_WRONLY, os.ModeNamedPipe)
 	defer fpipe.Close()
 	defer fresp.Close()
-	defer os.Remove(pipePath)
-	defer os.Remove(respPath)
+	defer os.Remove(pipe_path)
+	defer os.Remove(resp_path)
 
 	reader := bufio.NewReader(fpipe)
 	for {

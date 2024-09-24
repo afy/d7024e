@@ -28,6 +28,6 @@ func GenerateAuthID(iter byte) AuthID {
 }
 
 // Compare two ids for equality.
-func (auth_uuid *AuthID) Equals(a AuthID) bool {
-	return bytes.Equal(auth_uuid.value[:], a.value[:])
+func (auth_id *AuthID) Equals(a AuthID) bool {
+	return bytes.Equal(auth_id.value[:], a.value[:])
 }

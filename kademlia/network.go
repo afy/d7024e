@@ -50,15 +50,15 @@ func (network *Network) ManagePingMessage(aid *AuthID, req_addr string, target_i
 		network.SendResponse(aid, req_addr, response)
 	} else {
 		fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
-		closestContacts := network.routing_table.FindClosestContacts(target, 1)
+		closest_contacts := network.routing_table.FindClosestContacts(target, 1)
 
-		if len(closestContacts) == 0 {
+		if len(closest_contacts) == 0 {
 			fmt.Printf("No closest node found")
 			return
 		}
 
-		closestNode := closestContacts[0]
-		resp := network.SendAndWait(closestNode.Address, RPC_PING, []byte(target_id), nil)
+		closest_node := closest_contacts[0]
+		resp := network.SendAndWait(closest_node.Address, RPC_PING, []byte(target_id), nil)
 		network.SendResponse(aid, req_addr, resp)
 	}
 }
@@ -66,11 +66,11 @@ func (network *Network) ManagePingMessage(aid *AuthID, req_addr string, target_i
 // Get "alpha" closest nodes from k-buckets and send simultaneous reqs.
 // collect a list of the k-closest nodes and send back to client.
 func (network *Network) ManageFindContactMessage(aid *AuthID, req_addr string, target_id string) {
-	targetID := NewKademliaID(target_id)
-	closestContacts := network.routing_table.FindClosestContacts(targetID, ALPHA)
+	target := NewKademliaID(target_id)
+	closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
-	err := enc.Encode(closestContacts)
+	err := enc.Encode(closest_contacts)
 	AssertAndCrash(err)
 	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
 	network.SendResponse(aid, req_addr, b.Bytes())
@@ -78,12 +78,12 @@ func (network *Network) ManageFindContactMessage(aid *AuthID, req_addr string, t
 
 // Same as findnode, but if the target is node, return a value instead.
 func (network *Network) ManageFindDataMessage(aid *AuthID, req_addr string, target_id string) {
-	targetID := NewKademliaID(target_id)
-	closestContacts := network.routing_table.FindClosestContacts(targetID, ALPHA)
+	target := NewKademliaID(target_id)
+	closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
 
-	for _, contact := range closestContacts {
+	for _, contact := range closest_contacts {
 		fmt.Printf("Sending FindData request to: %s\n", contact.Address)
-		response := network.SendAndWait(contact.Address, RPC_FINDVAL, targetID[:], []byte{})
+		response := network.SendAndWait(contact.Address, RPC_FINDVAL, target[:], []byte{})
 
 		// Check if response is empty during the network communication failure
 		if len(response) == 0 {
@@ -126,14 +126,14 @@ func (network *Network) SendFindValueMessage(value_id string) string {
 // Send a PING RPC to the network and return the status message string.
 func (network *Network) SendPingMessage(target_id string) string {
 	target := NewKademliaID(string(target_id))
-	closestContacts := network.routing_table.FindClosestContacts(target, 1)
-	if len(closestContacts) == 0 {
+	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
+	if len(closest_contacts) == 0 {
 		fmt.Println("No closest node found")
 		return "No closest node found\n"
 	}
-	closestNode := closestContacts[0]
-	pingMessage := append([]byte{}, []byte(target_id)...)
+	closestNode := closest_contacts[0]
+	ping_msg := append([]byte{}, []byte(target_id)...)
 	my_ip := network.routing_table.me.Address
-	resp := network.SendAndWait(closestNode.Address, RPC_PING, pingMessage, []byte(my_ip))
+	resp := network.SendAndWait(closestNode.Address, RPC_PING, ping_msg, []byte(my_ip))
 	return string(resp) + "\n"
 }

@@ -23,10 +23,10 @@ const (
 
 // Contains port information, such as auth iter count.
 type PortData struct {
-	Num     int
-	Num_str string
-	Iter    byte
-	Open    bool
+	num     int
+	num_str string
+	iter    byte
+	open    bool
 }
 
 // Object containing all information needed for inter-node communication.
@@ -63,14 +63,14 @@ func (network *Network) GetFirstOpenPort() *PortData {
 	max_ind := PRANGE_MAX - PRANGE_MIN
 	for i := 0; i <= max_ind; i++ {
 		port := network.dynamic_ports[i]
-		fmt.Printf("PORT %s: %t\n", i, port.Open)
+		fmt.Printf("PORT %s: %t\n", i, port.open)
 	}
 	for i := 0; i <= max_ind; i++ {
 		port := network.dynamic_ports[i]
 
 		// Using port.open is more reliable than attempting to bind.
 		// It is read-only here, port should only be set in SendAndWait()
-		if port.Open {
+		if port.open {
 			return port
 		}
 	}
@@ -94,9 +94,9 @@ func ParseInput(buf []byte, n int) (byte, *AuthID, [][]byte) {
 // Send a UDP packet to a node/client. Then, start waiting for a UDP packet on same port.
 func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, param_2 []byte) []byte {
 	req_port := network.GetFirstOpenPort()
-	req_port.Open = false
+	req_port.open = false
 
-	addr, err := net.ResolveUDPAddr("udp", ":"+req_port.Num_str)
+	addr, err := net.ResolveUDPAddr("udp", ":"+req_port.num_str)
 	AssertAndCrash(err)
 	dialer := net.Dialer{
 		LocalAddr: addr,
@@ -106,11 +106,11 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, pa
 	// No defer; close connection directly after sending UDP packet
 	req_conn, err := dialer.Dial("udp", dist_ip)
 	AssertAndCrash(err)
-	fmt.Printf("RPC Listener: Sent RPC %s to %s from %s\n", GetRPCName(rpc), dist_ip, ":"+req_port.Num_str)
+	fmt.Printf("RPC Listener: Sent RPC %s to %s from %s\n", GetRPCName(rpc), dist_ip, ":"+req_port.num_str)
 
 	// Format network packet (see docs)
-	aid_req := GenerateAuthID(req_port.Iter)
-	req_port.Iter += 0x01
+	aid_req := GenerateAuthID(req_port.iter)
+	req_port.iter += 0x01
 	len_p1 := len(string(param_1))
 	len_p2 := len(string(param_2))
 	body := []byte{
@@ -127,10 +127,10 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, pa
 	AssertAndCrash(err)
 
 	// Wait for response, where the auth id:s match
-	resp_conn, err := net.ListenPacket("udp", ":"+req_port.Num_str)
+	resp_conn, err := net.ListenPacket("udp", ":"+req_port.num_str)
 	AssertAndCrash(err)
 	defer resp_conn.Close()
-	fmt.Printf("RPC Listener: Waiting on %s\n", ":"+req_port.Num_str)
+	fmt.Printf("RPC Listener: Waiting on %s\n", ":"+req_port.num_str)
 
 	ret_buf := make([]byte, MAX_PACKET_SIZE)
 	for {
@@ -146,19 +146,19 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, param_1 []byte, pa
 		}
 	}
 
-	req_port.Open = true
+	req_port.open = true
 	return ret_buf
 }
 
 // Send function to send a response back to the specified address.
 // Never use in implementation, rather use SendResponse or SendRPC
 func (network *Network) Send(dist_ip string, response []byte) {
-	responseAddr, err := net.ResolveUDPAddr("udp", dist_ip)
+	resp_addr, err := net.ResolveUDPAddr("udp", dist_ip)
 	if err != nil {
 		fmt.Printf("Error resolving %s: %v\n", dist_ip, err)
 		return
 	}
-	conn, err := net.DialUDP("udp", nil, responseAddr)
+	conn, err := net.DialUDP("udp", nil, resp_addr)
 	if err != nil {
 		fmt.Printf("Error dialing UDP: %vn", err)
 		return
