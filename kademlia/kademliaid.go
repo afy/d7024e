@@ -3,6 +3,7 @@ package kademlia
 import (
 	"encoding/hex"
 	"math/rand"
+	"strings"
 )
 
 // the static number of bytes in a KademliaID
@@ -13,6 +14,7 @@ type KademliaID [IDLength]byte
 
 // NewKademliaID returns a new instance of a KademliaID based on the string input
 func NewKademliaID(data string) *KademliaID {
+	data = strings.Replace(data, "\x00", "", -1) // prevent issue where a nil byte is inserted into string
 	decoded, _ := hex.DecodeString(data)
 
 	newKademliaID := KademliaID{}
@@ -53,7 +55,7 @@ func (kademliaID KademliaID) Equals(otherKademliaID *KademliaID) bool {
 	return true
 }
 
-// CalcDistance returns a new instance of a KademliaID that is built 
+// CalcDistance returns a new instance of a KademliaID that is built
 // through a bitwise XOR operation betweeen kademliaID and target
 func (kademliaID KademliaID) CalcDistance(target *KademliaID) *KademliaID {
 	result := KademliaID{}

@@ -1,102 +1,89 @@
 package kademlia
 
+// ===== REQ UDP PROTOCOL
+// Byte 0:
+//		0x0: PING
+//		0x1: STORE
+//		0x2: FINDNODE
+//		0x3: FINDVAL
+// Byte 1-2:
+// 		Validity UUID (byte 1: random, byte 2: port)
+// Byte 3:
+//		Param 1 Length (In bytes)
+// Byte 4:
+//		Param 2 Length (In bytes)
+// Bytes 5-END:
+//		Param data stream
+//
+// Max message size = 256*2 + 3 bytes
+
+// ===== RESP UDP PROTOCOL
+// Byte 0-1: Auth UUID
+// Byte 2-END: Data
+
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
-	"net"
-	"strconv"
+	"os"
 )
 
-// Object containing all information needed for inter-node communication.
-type Network struct {
-	routing_table *RoutingTable
-	dynamic_ports []*PortData
-}
-
-// Create a new Network instance with random id.
-func NewNetwork(this_ip string, port string) *Network {
-	addr := this_ip + ":" + port
-	rtable := NewRoutingTable(NewContact(NewRandomKademliaID(), addr))
-	var ports [PRANGE_MAX - PRANGE_MIN + 1]*PortData
-	for pi := range ports {
-		ports[pi] = &PortData{
-			PRANGE_MIN + pi,
-			strconv.Itoa(PRANGE_MIN + pi),
-			0x00,
-			false,
-		}
-	}
-	return &Network{rtable, ports[:]}
-}
-
 // Send a request to the bootstrap node (init_addr) to join the network.
+// This is done by requesting a self-lookup to the bootstrap node
 func (network *Network) JoinNetwork(init_addr string) {
-	p1 := []byte(init_addr) // param 1: node address to find
-	p2 := []byte{}          // param 2: none
-	resp := network.SendAndWait(init_addr, RPC_FINDNODE, p1, p2)
-	fmt.Printf("Response from server: %s\n", string(resp))
+	fmt.Println("Self-lookup request sent")
+	bootstrap_id := NewKademliaID(os.Getenv("BOOTSTRAP_NODE_ID"))
+	network.routing_table.AddContact(NewContact(bootstrap_id, init_addr))
+
+	// No response handling necessary, but we should still wait for it
+	network.SendAndWait(init_addr, RPC_FINDCONTACT, []byte(os.Getenv("BOOTSTRAP_NODE_ID")), nil)
 }
 
 // SendPingMessage handles a PING request.
-// If the target is this node, it sends a response back to original requester.
-// Otherwise, it finds the closest node and send a PING rpc to it.
-func (network *Network) SendPingMessage(meta *MessageMetadata, target_id []byte) {
-    target := NewKademliaID(string(target_id))
+// If target is this node, send ping response to original requester.
+// Otherwise, find the closest node and send a PING rpc to it.
+func (network *Network) ManagePingMessage(aid *AuthID, req_addr string, target_id string) {
+	target := NewKademliaID(target_id)
+	if target.Equals(network.routing_table.me.ID) {
+		fmt.Printf("Responding to PING from %s\n", req_addr)
+		response := []byte(fmt.Sprintf("Ping response from %s", target_id))
+		network.SendResponse(aid, req_addr, response)
+	} else {
+		fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
+		closest_contacts := network.routing_table.FindClosestContacts(target, 1)
 
-    if target.Equals(network.routing_table.me.ID) {
-        fmt.Printf("Responding to PING from %s\n", meta.addr)
-				// Need to create a SendResponse funtion ??
-        response := []byte{meta.auuid.value[0], meta.auuid.value[1]} 
-        network.SendResponse(meta.addr, response)                   
-        return
-    } else {
-        fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
-        closestContacts := network.routing_table.FindClosestContacts(target, 1)
+		if len(closest_contacts) == 0 {
+			fmt.Printf("No closest node found")
+			return
+		}
 
-        if len(closestContacts) == 0 {
-            fmt.Printf("No closest node found")
-            return
-        }
-
-        closestNode := closestContacts[0]
-        pingMessage := append([]byte{RPC_PING}, target_id...) 
-        network.SendAndWait(closestNode.Address, RPC_PING, pingMessage, nil) 
-    }
+		closest_node := closest_contacts[0]
+		resp := network.SendAndWait(closest_node.Address, RPC_PING, []byte(target_id), nil)
+		network.SendResponse(aid, req_addr, resp)
+	}
 }
-
 
 // Get "alpha" closest nodes from k-buckets and send simultaneous reqs.
 // collect a list of the k-closest nodes and send back to client.
-func (network *Network) SendFindContactMessage(meta *MessageMetadata, target_id []byte) {
-
-	// %%%%%%%%% TEST FUNCTION, rewrite this
-	c, err := net.Dial("udp", meta.addr)
+func (network *Network) ManageFindContactMessage(aid *AuthID, req_addr string, target_id string) {
+	target := NewKademliaID(target_id)
+	closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
+	var b bytes.Buffer
+	enc := gob.NewEncoder(&b)
+	err := enc.Encode(closest_contacts)
 	AssertAndCrash(err)
-	defer c.Close()
-	fmt.Printf("Sending response to %s\n", meta.addr)
-
-	var body []byte
-	body = append([]byte{}, meta.auuid.value[:]...)
-	body = append(body, []byte("RESPONSE HERE")...)
-	c.Write(body)
+	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
+	network.SendResponse(aid, req_addr, b.Bytes())
 }
 
-const alpha = 8
-
 // Same as findnode, but if the target is node, return a value instead.
-func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []byte) ([]byte, error) {
+func (network *Network) ManageFindDataMessage(aid *AuthID, req_addr string, target_id string) {
+	target := NewKademliaID(target_id)
+	closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
 
-	// Converts the bytes slice target_id to a KademliaID
-	targetID := NewKademliaID(fmt.Sprintf("%x", target_id))
-
-	// Find closest contacts using alpha
-	closestContacts := network.routing_table.FindClosestContacts(targetID, alpha)
-
-	// Iterate over closest contacts and send FindData requests
-	for _, contact := range closestContacts {
+	for _, contact := range closest_contacts {
 		fmt.Printf("Sending FindData request to: %s\n", contact.Address)
-
-		// Using the SendAndWait function instead of direct send
-		response := network.SendAndWait(contact.Address, RPC_FINDVAL, targetID[:], []byte{})
+		response := network.SendAndWait(contact.Address, RPC_FINDVAL, target[:], []byte{})
 
 		// Check if response is empty during the network communication failure
 		if len(response) == 0 {
@@ -106,20 +93,47 @@ func (network *Network) SendFindDataMessage(meta *MessageMetadata, target_id []b
 
 		// Check if the first byte of the response indicates data found
 		if len(response) > 1 && response[0] == 0x01 {
-			// Data found in the response
 			fmt.Printf("Data found for target %x at %s\n", target_id, contact.Address)
-			return response[1:], nil // Return the found data, skipping the success byte
+			network.SendResponse(aid, req_addr, response[1:])
+
 		} else if len(response) > 1 && response[0] == 0x00 {
-			// Target is a node, not data
 			fmt.Printf("Target %x is a node; continuing search.\n", target_id)
 			continue
 		}
 	}
 
-	// If no data or node is found in any response
-	return nil, fmt.Errorf("Data not found for target %x", targetID)
+	fmt.Println(req_addr)
+	network.SendResponse(aid, req_addr, nil)
 }
 
 // Same as PING but send additional metadata that gets stored. Send an OK to original client.
-func (network *Network) SendStoreMessage(meta *MessageMetadata, target_id []byte, value []byte) {
+func (network *Network) ManageStoreMessage(aid *AuthID, addr string, target_id []byte, value []byte) {
+}
+
+// PUT.
+// Send a STORE RPC and return the status message string
+func (network *Network) SendStoreValueMessage(target_id string, value []byte) string {
+	return "Not implemented yet"
+}
+
+// GET.
+// Send a FINDVAL RPC and return the status message string
+func (network *Network) SendFindValueMessage(value_id string) string {
+	return "Not implemented yet"
+}
+
+// PING.
+// Send a PING RPC to the network and return the status message string.
+func (network *Network) SendPingMessage(target_id string) string {
+	target := NewKademliaID(string(target_id))
+	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
+	if len(closest_contacts) == 0 {
+		fmt.Println("No closest node found")
+		return "No closest node found\n"
+	}
+	closestNode := closest_contacts[0]
+	ping_msg := append([]byte{}, []byte(target_id)...)
+	my_ip := network.routing_table.me.Address
+	resp := network.SendAndWait(closestNode.Address, RPC_PING, ping_msg, []byte(my_ip))
+	return string(resp) + "\n"
 }

@@ -14,6 +14,7 @@ func main() {
 	}
 	net := kademlia.NewNetwork("0.0.0.0", port)
 	go net.Listen()
+	go net.InitializeCLI()
 
 	is_bootstrap, err := strconv.ParseBool(os.Getenv("IS_BOOTSTRAP_NODE"))
 	kademlia.AssertAndCrash(err)

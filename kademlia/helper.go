@@ -37,3 +37,19 @@ func ParsePortNumber(address string) int {
 		return n
 	}
 }
+
+// Translate RPC code (byte) to a string for printing
+func GetRPCName(code byte) string {
+	switch code {
+	case RPC_PING:
+		return "PING"
+	case RPC_STORE:
+		return "STORE"
+	case RPC_FINDVAL:
+		return "FINDVAL"
+	case RPC_FINDCONTACT:
+		return "FINDCONTACT"
+	default:
+		return "[ERR]"
+	}
+}
