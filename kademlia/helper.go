@@ -4,6 +4,8 @@ package kademlia
 // depend on any other structs.
 
 import (
+	"bytes"
+	"encoding/gob"
 	"log"
 	"strconv"
 )
@@ -52,4 +54,23 @@ func GetRPCName(code byte) string {
 	default:
 		return "[ERR]"
 	}
+}
+
+// Serialize struct data to byte array
+func SerializeData(data any) []byte {
+	var b bytes.Buffer
+	enc := gob.NewEncoder(&b)
+	err := enc.Encode(data)
+	AssertAndCrash(err)
+	return b.Bytes()
+}
+
+// Deserialize data from byte array to generics T
+func DeserializeData[T any](data []byte) T {
+	var d T
+	var b bytes.Buffer = *bytes.NewBuffer(data)
+	dec := gob.NewDecoder(&b)
+	err := dec.Decode(d)
+	AssertAndCrash(err)
+	return d
 }

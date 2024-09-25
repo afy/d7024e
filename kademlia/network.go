@@ -22,8 +22,6 @@ package kademlia
 // Byte 2-END: Data
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"os"
 )
@@ -68,12 +66,9 @@ func (network *Network) ManagePingMessage(aid *AuthID, req_addr string, target_i
 func (network *Network) ManageFindContactMessage(aid *AuthID, req_addr string, target_id string) {
 	target := NewKademliaID(target_id)
 	closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
-	var b bytes.Buffer
-	enc := gob.NewEncoder(&b)
-	err := enc.Encode(closest_contacts)
-	AssertAndCrash(err)
+	b := SerializeData(closest_contacts)
 	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
-	network.SendResponse(aid, req_addr, b.Bytes())
+	network.SendResponse(aid, req_addr, b)
 }
 
 // Same as findnode, but if the target is node, return a value instead.
@@ -113,13 +108,29 @@ func (network *Network) ManageStoreMessage(aid *AuthID, addr string, target_id [
 // PUT.
 // Send a STORE RPC and return the status message string
 func (network *Network) SendStoreValueMessage(target_id string, value []byte) string {
-	return "Not implemented yet"
+	target := NewKademliaID(string(target_id))
+	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
+	if len(closest_contacts) == 0 {
+		fmt.Println("No closest node found")
+		return "No closest node found\n"
+	}
+	closestNode := closest_contacts[0]
+	resp := network.SendAndWait(closestNode.Address, RPC_PING, []byte(target_id), nil)
+	return string(resp) + "\n"
 }
 
 // GET.
 // Send a FINDVAL RPC and return the status message string
 func (network *Network) SendFindValueMessage(value_id string) string {
-	return "Not implemented yet"
+	target := NewKademliaID(value_id)
+	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
+	if len(closest_contacts) == 0 {
+		fmt.Println("No closest node found")
+		return "No closest node found\n"
+	}
+	closestNode := closest_contacts[0]
+	resp := network.SendAndWait(closestNode.Address, RPC_PING, []byte(value_id), nil)
+	return string(resp) + "\n"
 }
 
 // PING.
@@ -132,8 +143,6 @@ func (network *Network) SendPingMessage(target_id string) string {
 		return "No closest node found\n"
 	}
 	closestNode := closest_contacts[0]
-	ping_msg := append([]byte{}, []byte(target_id)...)
-	my_ip := network.routing_table.me.Address
-	resp := network.SendAndWait(closestNode.Address, RPC_PING, ping_msg, []byte(my_ip))
+	resp := network.SendAndWait(closestNode.Address, RPC_PING, []byte(target_id), nil)
 	return string(resp) + "\n"
 }

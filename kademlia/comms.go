@@ -33,6 +33,7 @@ type PortData struct {
 type Network struct {
 	routing_table *RoutingTable
 	dynamic_ports []*PortData
+	data_store    *Store
 }
 
 // Create a new Network instance with random id,
@@ -55,7 +56,8 @@ func NewNetwork(this_ip string, port string) *Network {
 			true,
 		}
 	}
-	return &Network{rtable, ports[:]}
+	store := NewStore()
+	return &Network{rtable, ports[:], store}
 }
 
 // Get the first open port from the dynamic_ports list.
@@ -214,6 +216,8 @@ func (network *Network) Listen() *Network {
 		}
 		rpc, aid, params := ParseInput(buf, n)
 		fmt.Printf("Main listener: Received: %s from %s\n", GetRPCName(rpc), addr)
+
+		// Update routing table
 
 		switch rpc {
 

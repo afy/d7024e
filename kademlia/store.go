@@ -2,86 +2,52 @@ package kademlia
 
 // Necessary imports
 import (
-	"errors"
-	"time"
+	"log"
 )
 
-// TypeMessage for the Kademlia operation
-type TypeMessage string
-
-const (
-	ERROR         TypeMessage = "ERROR"
-	STORE         TypeMessage = "STORE"
-	STORE_CONTACT TypeMessage = "STORE_CONTACT"
-	FIND_CONTACT  TypeMessage = "FIND_CONTACT"
-	FIND_VALUE    TypeMessage = "FIND_VALUE"
-)
-
-// Function to check if the TypeMessage is valid
-func (typeMessage TypeMessage) IsValid() error {
-	switch typeMessage {
-	case ERROR, STORE, STORE_CONTACT, FIND_CONTACT, FIND_VALUE:
-		return nil
-	}
-	return errors.New("Invalid type message")
+type Entry struct {
+	key   *KademliaID
+	value string
 }
 
-// Store represents the key-value pair being stored
 type Store struct {
-	Key   *Key
-	Value string
+	entries []*Entry
 }
 
-// Kademlia key type
-type Key struct {
-	ID string
+func NewStore() *Store {
+	var s []*Entry
+	return &Store{s}
 }
 
-// Kademlia value-type with value and version
-type Value struct {
-	Value   string
-	Version int64
+func (store *Store) NewEntry(hash *KademliaID, value string) *Entry {
+	return &Entry{hash, value}
 }
 
-// DedupStore holds a value and all keys referencing it
-type DedupStore struct {
-	Value   string
-	RefKeys []string
-}
-
-// Kademlia node with its datastore
-type Node struct {
-	dataStore   map[string]Value      // Stores key-value with version
-	dedupStore  map[string]DedupStore // Deduplication store
-	valueHashes map[string]string     // Maps value hashes to keys for SavedStore
-}
-
-// A new Kademlia node initialization
-func NewNode() *Node {
-	return &Node{
-		dataStore:   make(map[string]Value),
-		dedupStore:  make(map[string]DedupStore),
-		valueHashes: make(map[string]string),
+func (store *Store) Store(hash *KademliaID, value string) {
+	for _, e := range store.entries {
+		if e.key.Equals(hash) {
+			log.Println("Value is already stored")
+			return
+		}
 	}
+	store.entries = append(store.entries, store.NewEntry(hash, value))
 }
 
-// Function to calculate hash value for SavedStore
-func hash(value string) string {
-	//h := sha256.New()
-	//h.write([]byte(value))
-	//return fmt.Sprintf("%x", h.sum(nil))
-	return ""
-}
-
-// Function Store to handle different scenarios
-func (n *Node) Store(storeRequest *Store) error {
-	// Scenario 1: Handle same key but different value (versioning)
-	//if nodeEntry := n.dataStore[storeRequest.Key.ID];
-
-	n.dataStore[storeRequest.Key.ID] = Value{
-		Value:   storeRequest.Value,
-		Version: time.Now().Unix(),
+func (store *Store) GetEntry(hash *KademliaID) string {
+	for _, e := range store.entries {
+		if e.key.Equals(hash) {
+			return e.value
+		}
 	}
-	return nil
-	// Scenario 2: Handle different key but same value (deduplication)
+	log.Println("Value is not stored")
+	return "NIL"
+}
+
+func (store *Store) EntryExists(hash *KademliaID) bool {
+	for _, e := range store.entries {
+		if e.key.Equals(hash) {
+			return true
+		}
+	}
+	return false
 }
