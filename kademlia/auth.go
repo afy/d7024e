@@ -8,26 +8,31 @@ import (
 
 // A struct used to verify message integrity in RPC responses, since ports can be re-used.
 type AuthID struct {
-	value [2]byte
+	value [20]byte
 }
 
 // Create a id instance from existing bytes.
-func NewAuthID(rnd byte, iter byte) AuthID {
-	return AuthID{[2]byte{rnd, iter}}
+func NewAuthID(d [20]byte) *AuthID {
+	return &AuthID{d}
 }
 
 // Generate a new auth id.
-// Uses a value that should be iterated every time port is opened.
-func GenerateAuthID(iter byte) AuthID {
-	rnd := make([]byte, 1)
+func GenerateAuthID() *AuthID {
+	rnd := make([]byte, 20)
 	_, err := rand.Read(rnd)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return AuthID{[2]byte{rnd[0], iter}}
+	var d [20]byte
+	copy(rnd[:], d[:20])
+	return &AuthID{d}
 }
 
 // Compare two ids for equality.
 func (auth_id *AuthID) Equals(a AuthID) bool {
 	return bytes.Equal(auth_id.value[:], a.value[:])
+}
+
+func (auth_id *AuthID) String() string {
+	return string(auth_id.value[:])
 }

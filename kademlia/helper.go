@@ -4,8 +4,8 @@ package kademlia
 // depend on any other structs.
 
 import (
-	"bytes"
-	"encoding/gob"
+	"crypto/sha1"
+	"fmt"
 	"log"
 	"strconv"
 )
@@ -56,21 +56,11 @@ func GetRPCName(code byte) string {
 	}
 }
 
-// Serialize struct data to byte array
-func SerializeData(data any) []byte {
-	var b bytes.Buffer
-	enc := gob.NewEncoder(&b)
-	err := enc.Encode(data)
-	AssertAndCrash(err)
-	return b.Bytes()
-}
-
-// Deserialize data from byte array to generics T
-func DeserializeData[T any](data []byte) T {
-	var d T
-	var b bytes.Buffer = *bytes.NewBuffer(data)
-	dec := gob.NewDecoder(&b)
-	err := dec.Decode(d)
-	AssertAndCrash(err)
-	return d
+// data string value -> kademlia id
+func GetValueID(val string) *KademliaID {
+	sha := sha1.New()
+	sha.Write([]byte(val))
+	sum := sha.Sum(nil)
+	s := fmt.Sprintf("%x", sum)
+	return NewKademliaID(s)
 }

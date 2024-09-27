@@ -31,7 +31,8 @@ func (network *Network) InitializeCLI() {
 		cmd := strings.Split(line, " ")
 		switch cmd[0] {
 		case "put":
-			status := network.SendStoreValueMessage(cmd[1], []byte(cmd[2]))
+			value_id := GetValueID(cmd[1])
+			status := network.SendStoreValueMessage(value_id.String(), []byte(cmd[2]))
 			fresp.WriteString(status)
 
 		case "get":
