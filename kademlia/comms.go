@@ -18,10 +18,10 @@ const ALPHA = 3              // For node lookup; how many nodes to query
 const PARAM_K = 20           // "k" value specified in original paper
 const (
 	RPC_NIL         byte = 0x0
-	RPC_PING        byte = 0x1
-	RPC_STORE       byte = 0x2
-	RPC_FINDCONTACT byte = 0x3
-	RPC_FINDVAL     byte = 0x4
+	RPC_PING        byte = 0x2
+	RPC_STORE       byte = 0x3
+	RPC_FINDCONTACT byte = 0x4
+	RPC_FINDVAL     byte = 0x5
 )
 
 // Contains port information, such as auth iter count.
@@ -39,10 +39,10 @@ type Network struct {
 }
 
 type NetworkMessage struct {
-	rpc         byte
-	src_node_id string
-	aid         string
-	data        [][]byte
+	Rpc         byte     `json:"rpc"`
+	Src_node_id string   `json:"src_node_id"`
+	Aid         string   `json:"aid"`
+	Data        [][]byte `json:"data"`
 }
 
 // Wrapper func for json data sent over network
@@ -90,62 +90,70 @@ func (network *Network) GetFirstOpenPort() *PortData {
 
 // Parse *incoming* request data in main listener according to protocol at top of file.
 func ParseInput(buf []byte, n int) *NetworkMessage {
+	fmt.Printf("%s\n", string(buf))
 	var m NetworkMessage
-	err := json.Unmarshal(buf, &m)
+	err := json.Unmarshal(buf[:n], &m)
 	AssertAndCrash(err)
 	return &m
 }
 
 // Send a UDP packet to a node/client. Then, start waiting for a UDP packet on same port.
 func (network *Network) SendAndWait(dist_ip string, rpc byte, params [][]byte) [][]byte {
-	req_port := network.GetFirstOpenPort()
-	req_port.open = false
+	chan_msg := make(chan [][]byte)
 
-	addr, err := net.ResolveUDPAddr("udp", ":"+req_port.num_str)
-	AssertAndCrash(err)
-	dialer := net.Dialer{
-		LocalAddr: addr,
-		Timeout:   time.Duration(5 * float64(time.Second)), // great design choice
-	}
+	go func() {
+		req_port := network.GetFirstOpenPort()
+		req_port.open = false
 
-	// No defer; close connection directly after sending UDP packet
-	req_conn, err := dialer.Dial("udp", dist_ip)
-	AssertAndCrash(err)
-	fmt.Printf("RPC Listener: Sent RPC %s to %s from %s\n", GetRPCName(rpc), dist_ip, ":"+req_port.num_str)
-
-	// Format network packet (see docs)
-	aid_req := GenerateAuthID()
-	msg := NewNetworkMessage(rpc, network.routing_table.me.ID, aid_req, params)
-	msg_bytes, err := json.Marshal(msg)
-	AssertAndCrash(err)
-	_, err = req_conn.Write(msg_bytes)
-	req_conn.Close()
-	AssertAndCrash(err)
-
-	// Wait for response, where the auth id:s match
-	resp_conn, err := net.ListenPacket("udp", ":"+req_port.num_str)
-	AssertAndCrash(err)
-	defer resp_conn.Close()
-	fmt.Printf("RPC Listener: Waiting on %s\n", ":"+req_port.num_str)
-
-	ret_buf := make([][]byte, MAX_PACKET_SIZE)
-	for {
-		resp_buf := make([]byte, MAX_PACKET_SIZE)
-		_, _, err := resp_conn.ReadFrom(resp_buf)
+		addr, err := net.ResolveUDPAddr("udp", ":"+req_port.num_str)
 		AssertAndCrash(err)
-		var ret_msg *NetworkMessage
-		errd := json.Unmarshal(resp_buf, &ret_msg)
-		AssertAndCrash(errd)
-
-		if ret_msg.aid == aid_req.String() {
-			fmt.Println("RPC Listener: Response recieved")
-			ret_buf = ret_msg.data[:]
-			break
+		dialer := net.Dialer{
+			LocalAddr: addr,
+			Timeout:   time.Duration(5 * float64(time.Second)), // great design choice
 		}
-	}
 
-	req_port.open = true
-	return ret_buf
+		// No defer; close connection directly after sending UDP packet
+		req_conn, err := dialer.Dial("udp", dist_ip)
+		AssertAndCrash(err)
+		fmt.Printf("RPC Listener: Sent RPC %s to %s from %s\n", GetRPCName(rpc), dist_ip, ":"+req_port.num_str)
+
+		// Format network packet (see docs)
+		aid_req := GenerateAuthID()
+		msg := NewNetworkMessage(rpc, network.routing_table.me.ID, aid_req, params)
+		msg_bytes, err := json.Marshal(msg)
+		fmt.Printf("%s\n", string(msg_bytes))
+		AssertAndCrash(err)
+		_, err = req_conn.Write(msg_bytes)
+		req_conn.Close()
+		AssertAndCrash(err)
+
+		// Wait for response, where the auth id:s match
+		resp_conn, err := net.ListenPacket("udp", ":"+req_port.num_str)
+		AssertAndCrash(err)
+		defer resp_conn.Close()
+		fmt.Printf("RPC Listener: Waiting on %s\n", ":"+req_port.num_str)
+
+		ret_buf := make([][]byte, MAX_PACKET_SIZE)
+		for {
+			resp_buf := make([]byte, MAX_PACKET_SIZE)
+			n, _, err := resp_conn.ReadFrom(resp_buf)
+			AssertAndCrash(err)
+			var ret_msg *NetworkMessage
+			errd := json.Unmarshal(resp_buf[:n], &ret_msg)
+			AssertAndCrash(errd)
+
+			if ret_msg.Aid == aid_req.String() {
+				fmt.Println("RPC Listener: Response recieved")
+				ret_buf = ret_msg.Data[:]
+				break
+			}
+		}
+
+		req_port.open = true
+		chan_msg <- ret_buf
+	}()
+
+	return <-chan_msg
 }
 
 // Send function to send a response back to the specified address.
@@ -206,31 +214,33 @@ func (network *Network) Listen() *Network {
 		}
 		msg := ParseInput(buf, n)
 		var aid_bytes [20]byte
-		copy([]byte(msg.aid)[:], aid_bytes[:20])
+		copy([]byte(msg.Aid)[:], aid_bytes[:20])
 		aid := NewAuthID(aid_bytes)
-		fmt.Printf("Main listener: Received: %s from %s\n", GetRPCName(msg.rpc), addr)
+		fmt.Printf("Main listener: Received: %s (%x) from %s\n", GetRPCName(msg.Rpc), msg.Rpc, addr)
 
 		// Update routing table
+		network.routing_table.AddContact(NewContact(NewKademliaID(msg.Src_node_id), addr.String()))
+		fmt.Printf("%+v\n", msg)
 
-		switch msg.rpc {
+		switch msg.Rpc {
 
 		case RPC_PING:
-			target := strings.TrimSpace(string(msg.data[0]))
+			target := strings.TrimSpace(string(msg.Data[0]))
 			network.ManagePingMessage(aid, addr.String(), target)
 
 		case RPC_STORE:
-			network.ManageStoreMessage(aid, addr.String(), string(msg.data[0]), string(msg.data[1]))
+			network.ManageStoreMessage(aid, addr.String(), string(msg.Data[0]), string(msg.Data[1]))
 
 		case RPC_FINDCONTACT:
-			target := strings.TrimSpace(string(msg.data[0]))
+			target := strings.TrimSpace(string(msg.Data[0]))
 			network.ManageFindContactMessage(aid, addr.String(), target)
 
 		case RPC_FINDVAL:
-			target := strings.TrimSpace(string(msg.data[0]))
+			target := strings.TrimSpace(string(msg.Data[0]))
 			network.ManageFindDataMessage(aid, addr.String(), target)
 
 		default:
-			fmt.Printf("Main listener: Invalid RPC: %s\n", string(msg.rpc))
+			fmt.Printf("Main listener: Invalid RPC: %s\n", string(msg.Rpc))
 		}
 	}
 }

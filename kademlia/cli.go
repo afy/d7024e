@@ -54,6 +54,7 @@ func (network *Network) InitializeCLI() {
 		case "response:":
 		default:
 			fmt.Println("Invalid command: " + cmd[0])
+			fresp.WriteString("Invalid command\n")
 		}
 	}
 }

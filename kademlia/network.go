@@ -134,10 +134,16 @@ func (network *Network) SendStoreValueMessage(value_id string, value []byte) str
 		fmt.Println("No closest node found")
 		return "No closest node found\n"
 	}
-	closestNode := closest_contacts[0]
-	var params = make([][]byte, 1)
+	closest_node := closest_contacts[0]
+
+	/*if network.routing_table.me.Less(&closest_node) {
+		// handle the RPC at this node
+	}*/
+
+	var params = make([][]byte, 2)
 	params[0] = []byte(value_id)
-	resp := network.SendAndWait(closestNode.Address, RPC_STORE, params)[0]
+	params[1] = []byte(value)
+	resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)[0]
 	return string(resp) + "\n"
 }
 
@@ -150,10 +156,11 @@ func (network *Network) SendFindValueMessage(value_id string) string {
 		fmt.Println("No closest node found")
 		return "No closest node found\n"
 	}
-	closestNode := closest_contacts[0]
+	closest_node := closest_contacts[0]
+
 	var params = make([][]byte, 1)
 	params[0] = []byte(value_id)
-	resp := network.SendAndWait(closestNode.Address, RPC_FINDVAL, params)[0]
+	resp := network.SendAndWait(closest_node.Address, RPC_FINDVAL, params)[0]
 	return string(resp) + "\n"
 }
 
@@ -166,9 +173,10 @@ func (network *Network) SendPingMessage(target_node_id string) string {
 		fmt.Println("No closest node found")
 		return "No closest node found\n"
 	}
-	closestNode := closest_contacts[0]
+	closest_node := closest_contacts[0]
+
 	var params = make([][]byte, 1)
 	params[0] = []byte(target_node_id)
-	resp := network.SendAndWait(closestNode.Address, RPC_PING, params)[0]
+	resp := network.SendAndWait(closest_node.Address, RPC_PING, params)[0]
 	return string(resp) + "\n"
 }
