@@ -29,8 +29,7 @@ func (network *Network) ManagePingMessage(aid *AuthID, req_addr string, target_n
 	target := NewKademliaID(target_node_id)
 	if target.Equals(network.routing_table.me.ID) {
 		fmt.Printf("Responding to PING from %s\n", req_addr)
-		var response = make([][]byte, 1)
-		response[0] = []byte(fmt.Sprintf("Ping response from %s", target_node_id))
+		response := []byte(fmt.Sprintf("Ping response from %s", target_node_id))
 		network.SendResponse(aid, req_addr, response)
 	} else {
 		fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
@@ -38,8 +37,7 @@ func (network *Network) ManagePingMessage(aid *AuthID, req_addr string, target_n
 
 		if len(closest_contacts) == 0 {
 			fmt.Printf("No closest node found")
-			var response = make([][]byte, 1)
-			response[0] = []byte(fmt.Sprintf("No closest node found"))
+			response := []byte(fmt.Sprintf("No closest node found"))
 			network.SendResponse(aid, req_addr, response)
 			return
 		}
@@ -59,8 +57,7 @@ func (network *Network) ManageFindContactMessage(aid *AuthID, req_addr string, t
 	//closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
 	//b := SerializeData(closest_contacts)
 	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
-	var response = make([][]byte, 0)
-	network.SendResponse(aid, req_addr, response)
+	network.SendResponse(aid, req_addr, nil)
 }
 
 // Same as findnode, but if the target is node, return a value instead.
@@ -81,11 +78,11 @@ func (network *Network) ManageFindDataMessage(aid *AuthID, req_addr string, valu
 		}
 
 		// Check if the first byte of the response indicates data found
-		if len(response) > 1 && response[0][0] == 0x01 {
+		if len(response) > 1 && response[0] == 0x01 {
 			fmt.Printf("Data found for target %x at %s\n", value_id, contact.Address)
 			network.SendResponse(aid, req_addr, response[1:])
 
-		} else if len(response) > 1 && response[0][0] == 0x00 {
+		} else if len(response) > 1 && response[0] == 0x00 {
 			fmt.Printf("Target %x is a node; continuing search.\n", value_id)
 			continue
 		}
@@ -105,22 +102,20 @@ func (network *Network) ManageStoreMessage(aid *AuthID, req_addr string, value_i
 	if network.routing_table.me.Less(&closest) {
 		if !network.data_store.EntryExists(target) {
 			fmt.Printf("Adding entry to store: %s:%s, req from %s\n", value_id, value, req_addr)
-			var response = make([][]byte, 1)
-			response[0] = []byte(fmt.Sprintf("Stored value"))
+			response := []byte(fmt.Sprintf("Stored value %s : %s at node %s", value_id, value, network.routing_table.me.ID.String()))
 			network.SendResponse(aid, req_addr, response)
 			return
 		}
 
 		fmt.Printf("Entry already exists: %s:%s, req from %s\n", value_id, value, req_addr)
-		var response = make([][]byte, 1)
-		response[0] = []byte(fmt.Sprintf("Value is already stored in the network"))
+		response := []byte(fmt.Sprintf("Value is already stored in the network"))
 		network.SendResponse(aid, req_addr, response)
 
 	} else {
 		var params = make([][]byte, 2)
 		params[0] = []byte(value_id)
 		params[1] = []byte(value)
-		response := network.SendAndWait(closest.Address, RPC_PING, params)
+		response := network.SendAndWait(closest.Address, RPC_STORE, params)
 		network.SendResponse(aid, req_addr, response)
 	}
 }
@@ -143,7 +138,7 @@ func (network *Network) SendStoreValueMessage(value_id string, value []byte) str
 	var params = make([][]byte, 2)
 	params[0] = []byte(value_id)
 	params[1] = []byte(value)
-	resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)[0]
+	resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)
 	return string(resp) + "\n"
 }
 
@@ -160,7 +155,7 @@ func (network *Network) SendFindValueMessage(value_id string) string {
 
 	var params = make([][]byte, 1)
 	params[0] = []byte(value_id)
-	resp := network.SendAndWait(closest_node.Address, RPC_FINDVAL, params)[0]
+	resp := network.SendAndWait(closest_node.Address, RPC_FINDVAL, params)
 	return string(resp) + "\n"
 }
 
@@ -177,6 +172,6 @@ func (network *Network) SendPingMessage(target_node_id string) string {
 
 	var params = make([][]byte, 1)
 	params[0] = []byte(target_node_id)
-	resp := network.SendAndWait(closest_node.Address, RPC_PING, params)[0]
+	resp := network.SendAndWait(closest_node.Address, RPC_PING, params)
 	return string(resp) + "\n"
 }

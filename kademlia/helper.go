@@ -20,7 +20,7 @@ func AssertAndCrash(err error) {
 }
 
 // Used to parse the port number from an ip address.
-func ParsePortNumber(address string) int {
+func ParsePortNumber(address string) (string, int) {
 	var i int
 	var c rune
 	for i, c = range address {
@@ -32,11 +32,11 @@ func ParsePortNumber(address string) int {
 	sl := len(address)
 	if i == sl {
 		log.Fatal("Cannot parse port from address: " + address)
-		return -1
+		return "", -1
 	} else {
 		n, err := strconv.Atoi(address[i+1 : sl])
 		AssertAndCrash(err)
-		return n
+		return address[0:i], n
 	}
 }
 
