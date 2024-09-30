@@ -73,6 +73,7 @@ func NewNetwork(this_ip string, port string) *Network {
 		}
 	}
 	store := NewStore()
+	fmt.Printf("NodeId: %s\n", rtable.me.ID.String())
 	return &Network{rtable, ports[:], store}
 }
 
@@ -93,7 +94,6 @@ func (network *Network) GetFirstOpenPort() *PortData {
 
 // Parse *incoming* request data in main listener according to protocol at top of file.
 func ParseInput(buf []byte, n int) *NetworkMessage {
-	fmt.Printf("%s\n", string(buf))
 	var m NetworkMessage
 	err := json.Unmarshal(buf[:n], &m)
 	AssertAndCrash(err)
@@ -118,7 +118,7 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_li
 		// No defer; close connection directly after sending UDP packet
 		req_conn, err := dialer.Dial("udp", dist_ip)
 		AssertAndCrash(err)
-		fmt.Printf("RPC Listener: Sent RPC %s to %s from %s\n", GetRPCName(rpc), dist_ip, ":"+req_port.num_str)
+		fmt.Printf("RPC: Sent RPC %s to %s from %s\n", GetRPCName(rpc), dist_ip, ":"+req_port.num_str)
 
 		// Format network packet (see docs)
 		aid_req := GenerateAuthID()
@@ -133,7 +133,7 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_li
 		resp_conn, err := net.ListenPacket("udp", ":"+req_port.num_str)
 		AssertAndCrash(err)
 		defer resp_conn.Close()
-		fmt.Printf("RPC Listener: Waiting on %s\n", ":"+req_port.num_str)
+		fmt.Printf("RPC: Waiting on %s\n", ":"+req_port.num_str)
 
 		ret_buf := make([]byte, MAX_PACKET_SIZE)
 		for {
@@ -145,7 +145,7 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_li
 			AssertAndCrash(errd)
 
 			if ret_msg.Aid == aid_req.String() {
-				fmt.Println("RPC Listener: Response recieved")
+				fmt.Println("RPC: Response recieved")
 				ret_buf = ret_msg.Data[0][:]
 				break
 			}
@@ -163,20 +163,20 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_li
 func (network *Network) Send(dist_ip string, response []byte) {
 	resp_addr, err := net.ResolveUDPAddr("udp", dist_ip)
 	if err != nil {
-		fmt.Printf("Error resolving %s: %v\n", dist_ip, err)
+		fmt.Printf("RPC: Error resolving %s: %v\n", dist_ip, err)
 		return
 	}
 	conn, err := net.DialUDP("udp", nil, resp_addr)
 	if err != nil {
-		fmt.Printf("Error dialing UDP: %vn", err)
+		fmt.Printf("RPC: Error dialing UDP: %vn", err)
 		return
 	}
 	defer conn.Close()
 	_, err = conn.Write(response)
 	if err != nil {
-		fmt.Printf("Error sending response: %vn", err)
+		fmt.Printf("RPC: Error sending response: %vn", err)
 	} else {
-		fmt.Printf("Response sent to: %v\n", dist_ip)
+		fmt.Printf("RPC: Response sent to: %v\n", dist_ip)
 	}
 }
 
@@ -207,7 +207,7 @@ func (network *Network) Listen() *Network {
 	conn, err := net.ListenPacket("udp", network.routing_table.me.Address)
 	AssertAndCrash(err)
 	defer conn.Close()
-	fmt.Printf("Main listener: Listening for requests on %s\n", network.routing_table.me.Address)
+	fmt.Printf("Main: Listening for requests on %s\n", network.routing_table.me.Address)
 
 	for {
 		buf := make([]byte, MAX_PACKET_SIZE)
@@ -220,7 +220,7 @@ func (network *Network) Listen() *Network {
 		var aid_bytes [20]byte
 		copy([]byte(msg.Aid)[:], aid_bytes[:20])
 		aid := NewAuthID(aid_bytes)
-		fmt.Printf("Main listener: Received: %s (%x) from %s\n", GetRPCName(msg.Rpc), msg.Rpc, addr)
+		fmt.Printf("Main: Received: %s (%x) from %s (%s)\n", GetRPCName(msg.Rpc), msg.Rpc, msg.Src_node_id, addr)
 
 		// Update routing table
 		src_ip, _ := ParsePortNumber(addr.String())
@@ -231,21 +231,21 @@ func (network *Network) Listen() *Network {
 
 		case RPC_PING:
 			target := strings.TrimSpace(string(msg.Data[0]))
-			network.ManagePingMessage(aid, addr.String(), target)
+			network.ManagePing(aid, addr.String(), target)
 
 		case RPC_STORE:
-			network.ManageStoreMessage(aid, addr.String(), string(msg.Data[0]), string(msg.Data[1]))
+			network.ManageStore(aid, addr.String(), string(msg.Data[0]), string(msg.Data[1]))
 
 		case RPC_FINDCONTACT:
 			target := strings.TrimSpace(string(msg.Data[0]))
-			network.ManageFindContactMessage(aid, addr.String(), target)
+			network.ManageFindContact(aid, addr.String(), target)
 
 		case RPC_FINDVAL:
 			target := strings.TrimSpace(string(msg.Data[0]))
-			network.ManageFindDataMessage(aid, addr.String(), target)
+			network.ManageFindData(aid, addr.String(), target)
 
 		default:
-			fmt.Printf("Main listener: Invalid RPC: %s\n", string(msg.Rpc))
+			fmt.Printf("Main: Invalid RPC: %s\n", string(msg.Rpc))
 		}
 	}
 }

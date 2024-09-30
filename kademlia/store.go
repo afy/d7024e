@@ -30,7 +30,8 @@ func (store *Store) Store(hash *KademliaID, value string) {
 			return
 		}
 	}
-	store.entries = append(store.entries, store.NewEntry(hash, value))
+	ne := store.NewEntry(hash, value)
+	store.entries = append(store.entries, ne)
 }
 
 func (store *Store) GetEntry(hash *KademliaID) string {
