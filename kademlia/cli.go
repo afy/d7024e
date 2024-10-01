@@ -28,7 +28,7 @@ func (network *Network) InitializeCLI() {
 		if err != nil {
 			continue
 		}
-		cmd := strings.Split(line, " ")
+		cmd := strings.SplitN(line, " ", 3)
 		switch cmd[0] {
 		case "put":
 			status := network.SendStore(cmd[1], []byte(cmd[2]))
