@@ -128,7 +128,7 @@ func (network *Network) SendPingMessage(target_id string) string {
 	target := NewKademliaID(string(target_id))
 	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
 	if len(closest_contacts) == 0 {
-		fmt.Println("No closest node found")
+		fmt.Println("No closest node found\n")
 		return "No closest node found\n"
 	}
 	closestNode := closest_contacts[0]

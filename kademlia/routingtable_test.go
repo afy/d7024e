@@ -3,6 +3,7 @@ package kademlia
 import (
 	"fmt"
 	"testing"
+  "github.com/stretchr/testify/assert"
 )
 
 // FIXME: This test doesn't actually test anything. There is only one assertion
@@ -24,7 +25,5 @@ func TestRoutingTable(t *testing.T) {
 	}
 
 	// TODO: This is just an example. Make more meaningful assertions.
-	if len(contacts) != 6 {
-		t.Fatalf("Expected 6 contacts but instead got %d", len(contacts))
-	}
+  assert.Equal(t, 6, len(contacts), fmt.Sprintf("Expected 6 contacts but instead got %d", len(contacts)))
 }
