@@ -4,7 +4,9 @@ package kademlia
 // depend on any other structs.
 
 import (
+	"bytes"
 	"crypto/sha1"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"strconv"
@@ -63,4 +65,21 @@ func GetValueID(val string) *KademliaID {
 	sum := sha.Sum(nil)
 	s := fmt.Sprintf("%x", sum)
 	return NewKademliaID(s)
+}
+
+// Format contact list to printable string
+func ParseContactList(raw []byte) string {
+	byte_buffer := bytes.NewBuffer(raw)
+	var data []Contact
+	decoder := gob.NewDecoder(byte_buffer)
+	err := decoder.Decode(&data)
+	AssertAndCrash(err)
+
+	ret := ""
+	for _, e := range data {
+		line := fmt.Sprintf("<%s, %s>", e.Address, e.ID.String())
+		ret = ret + line
+	}
+
+	return ret
 }

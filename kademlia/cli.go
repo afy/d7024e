@@ -31,11 +31,13 @@ func (network *Network) InitializeCLI() {
 		cmd := strings.SplitN(line, " ", 3)
 		switch cmd[0] {
 		case "put":
-			status := network.SendStore(cmd[1], []byte(cmd[2]))
+			id := GetValueID(cmd[1])
+			status := network.SendStore(id.String(), []byte(cmd[2]))
 			fresp.WriteString(status)
 
 		case "get":
-			status := network.SendFindValue(cmd[1])
+			id := GetValueID(cmd[1])
+			status := network.SendFindValue(id.String())
 			fresp.WriteString(status)
 
 		case "exit":
