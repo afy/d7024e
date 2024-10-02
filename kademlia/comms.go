@@ -23,14 +23,15 @@ const (
 	RPC_STORE       byte = 0x02
 	RPC_FINDCONTACT byte = 0x03
 	RPC_FINDVAL     byte = 0x04
+	RPC_NODELOOKUP  byte = 0x05
 
-	// RPC Response codes (byte[0] = 1)
-	RESP_VALFOUND     byte = 0x10 // From store/findval, indicating value returned
-	RESP_CONTACTS     byte = 0x11 // From findval/contact indicating a list of contacts
-	RESP_STORE_OK     byte = 0x12 // Store has been a sucess
-	RESP_STORE_EXISTS byte = 0x13 // Value already exists in the network
-	RESP_PING_OK      byte = 0x14 // PING response
-	RESP_PING_FAIL    byte = 0x15
+	// RPC Response codes (byte[0] = F)
+	RESP_VALFOUND     byte = 0xF0 // From store/findval, indicating value returned
+	RESP_CONTACTS     byte = 0xF1 // From findval/contact indicating a list of contacts
+	RESP_STORE_OK     byte = 0xF2 // Store has been a sucess
+	RESP_STORE_EXISTS byte = 0xF3 // Value already exists in the network
+	RESP_PING_OK      byte = 0xF4 // PING response
+	RESP_PING_FAIL    byte = 0xF5
 )
 
 type byte_arr_list [][]byte
@@ -178,7 +179,7 @@ func (network *Network) Send(dist_ip string, response *NetworkMessage) {
 
 // network.Send but with AID for responses
 func (network *Network) SendResponse(aid *AuthID, dist_ip string, response_rpc byte, response []byte) {
-	if response_rpc&0xF0 == 0x10 {
+	if response_rpc&0xF0 != 0xF0 {
 		fmt.Println("Warning: response rpc in SendResponse: does not seem to be of type response (see comms.go)")
 	}
 	resp := make(byte_arr_list, 1)
@@ -222,6 +223,11 @@ func (network *Network) Listen() *Network {
 		// Update routing table
 		src_ip, _ := ParsePortNumber(addr.String())
 		network.routing_table.AddContact(NewContact(NewKademliaID(msg.Src_node_id), src_ip+":8008"))
+		for _, b := range network.routing_table.buckets {
+			for e := b.list.Front(); e != nil; e = e.Next() {
+				fmt.Printf("%s\n", e.Value)
+			}
+		}
 
 		switch msg.Rpc {
 		case RPC_PING:
@@ -238,6 +244,10 @@ func (network *Network) Listen() *Network {
 		case RPC_FINDVAL:
 			target := strings.TrimSpace(string(msg.Data[0]))
 			network.ManageFindData(aid, addr.String(), target)
+
+		case RPC_NODELOOKUP:
+			target := strings.TrimSpace(string(msg.Data[0]))
+			network.ManageNodeLookup(aid, addr.String(), target)
 
 		default:
 			fmt.Printf("Main: Invalid RPC: %s\n", string(msg.Rpc))

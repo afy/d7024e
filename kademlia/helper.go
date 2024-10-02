@@ -53,6 +53,8 @@ func GetRPCName(code byte) string {
 		return "FINDVAL"
 	case RPC_FINDCONTACT:
 		return "FINDCONTACT"
+	case RPC_NODELOOKUP:
+		return "NODELOOKUP"
 	default:
 		return "[ERR]"
 	}

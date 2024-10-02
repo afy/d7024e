@@ -13,7 +13,11 @@ func (network *Network) JoinNetwork(init_addr string) {
 	fmt.Println("Self-lookup request sent")
 	bootstrap_id := NewKademliaID(os.Getenv("BOOTSTRAP_NODE_ID"))
 	network.routing_table.AddContact(NewContact(bootstrap_id, init_addr))
-	network.SendNodeLookup(init_addr, network.routing_table.me.ID)
+
+	var params = make(byte_arr_list, 1)
+	target_node_id := network.routing_table.me.ID.String()
+	params[0] = []byte(target_node_id)
+	_ = network.SendAndWait(init_addr, RPC_NODELOOKUP, params)
 }
 
 // SendPingMessage handles a PING request.
@@ -108,6 +112,19 @@ func (network *Network) ManageFindContact(aid *AuthID, req_addr string, target_n
 	AssertAndCrash(err)
 	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
 	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_buffer.Bytes())
+}
+
+func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_node_id string) {
+	target := NewKademliaID(target_node_id)
+	closest := network.routing_table.FindClosestContacts(target, ALPHA)
+	var resps [ALPHA]NetworkMessage
+
+	var params = make(byte_arr_list, 1)
+	params[0] = []byte(target_node_id)
+
+	for i, c := range closest {
+		resps[i] = network.SendAndWait(c.Address, RPC_FINDVAL, params)
+	}
 }
 
 // Send a PING RPC to the network and return the status message string.
@@ -221,9 +238,4 @@ func (network *Network) SendFindContact(addr string, target_node_id *KademliaID)
 	default:
 		return fmt.Sprintf("ERR: %+v\n", resp)
 	}
-}
-
-// Used in join node,
-func (network *Network) SendNodeLookup(init_addr string, target_node_id *KademliaID) {
-
 }
