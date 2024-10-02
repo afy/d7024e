@@ -48,6 +48,7 @@ func TestMain(t *testing.T) {
 
   time.AfterFunc(MAX_TEST_TIME*time.Second, func() {
     if !ping_tests_done {
+      fmt.Printf("Ping tests timed out\n")
       os.Exit(1)
     }
   })
