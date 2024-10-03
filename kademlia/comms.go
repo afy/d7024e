@@ -208,12 +208,15 @@ func (network *Network) Listen() *Network {
 		buf := make([]byte, MAX_PACKET_SIZE)
 		n, addr, err := conn.ReadFrom(buf)
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
 			continue
 		}
 		var msg NetworkMessage
 		err2 := json.Unmarshal(buf[:n], &msg)
-		AssertAndCrash(err2)
+		if err2 != nil {
+			log.Println(err)
+			continue
+		}
 
 		var aid_bytes [20]byte
 		copy([]byte(msg.Aid)[:], aid_bytes[:20])
