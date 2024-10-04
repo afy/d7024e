@@ -63,7 +63,8 @@ func (network *Network) GetFirstOpenPort() *PortData {
 	max_ind := PRANGE_MAX - PRANGE_MIN
 	for i := 0; i <= max_ind; i++ {
 		port := network.dynamic_ports[i]
-		fmt.Printf("PORT %s: %t\n", i, port.open)
+		//fmt.Printf("PORT %s: %t\n", i, port.open)
+		fmt.Printf("PORT %d: %t\n", i, port.open)
 	}
 	for i := 0; i <= max_ind; i++ {
 		port := network.dynamic_ports[i]
