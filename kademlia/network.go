@@ -87,7 +87,7 @@ func (network *Network) ManageStore(aid *AuthID, req_addr string, value_id strin
 // Same as findnode, but if the target is node, return a value instead.
 func (network *Network) ManageFindData(aid *AuthID, req_addr string, value_id string) {
 	target := NewKademliaID(value_id)
-	closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
+	closest_contacts := network.routing_table.FindClosestContacts(target, PARAM_K)
 	if network.data_store.EntryExists(target) {
 		fmt.Println("Value found")
 		network.SendResponse(aid, req_addr, RESP_VALFOUND, []byte(network.data_store.GetEntry(target)))
