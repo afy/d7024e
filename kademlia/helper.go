@@ -6,6 +6,7 @@ package kademlia
 import (
 	"log"
 	"strconv"
+  "strings"
 )
 
 // Used to test an error and crash if it isnt nil.
@@ -52,4 +53,8 @@ func GetRPCName(code byte) string {
 	default:
 		return "[ERR]"
 	}
+}
+
+func Trim(s string) string {
+  return strings.ReplaceAll(strings.TrimSpace(s), "\x00", "")
 }

@@ -35,6 +35,10 @@ type Network struct {
 	dynamic_ports []*PortData
 }
 
+func (network *Network) GetID() string {
+  return network.routing_table.me.ID.String()
+}
+
 // Create a new Network instance with random id,
 // Unless it is the bootstrap node, whose nodeid is configured in the .env file.
 func NewNetwork(this_ip string, port string) *Network {
@@ -61,11 +65,6 @@ func NewNetwork(this_ip string, port string) *Network {
 // Get the first open port from the dynamic_ports list.
 func (network *Network) GetFirstOpenPort() *PortData {
 	max_ind := PRANGE_MAX - PRANGE_MIN
-	for i := 0; i <= max_ind; i++ {
-		port := network.dynamic_ports[i]
-		//fmt.Printf("PORT %s: %t\n", i, port.open)
-		fmt.Printf("PORT %d: %t\n", i, port.open)
-	}
 	for i := 0; i <= max_ind; i++ {
 		port := network.dynamic_ports[i]
 
