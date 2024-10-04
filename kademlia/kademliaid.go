@@ -15,7 +15,8 @@ type KademliaID [IDLength]byte
 // NewKademliaID returns a new instance of a KademliaID based on the string input
 func NewKademliaID(data string) *KademliaID {
 	data = strings.Replace(data, "\x00", "", -1) // prevent issue where a nil byte is inserted into string
-	decoded, _ := hex.DecodeString(data)
+	decoded, err := hex.DecodeString(data)
+	AssertAndCrash(err)
 
 	newKademliaID := KademliaID{}
 	for i := 0; i < IDLength; i++ {

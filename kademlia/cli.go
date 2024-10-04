@@ -28,14 +28,16 @@ func (network *Network) InitializeCLI() {
 		if err != nil {
 			continue
 		}
-		cmd := strings.Split(line, " ")
+		cmd := strings.SplitN(line, " ", 3)
 		switch cmd[0] {
 		case "put":
-			status := network.SendStoreValueMessage(cmd[1], []byte(cmd[2]))
+			id := GetValueID(cmd[1])
+			status := network.SendStore(id.String(), []byte(cmd[2]))
 			fresp.WriteString(status)
 
 		case "get":
-			status := network.SendFindValueMessage(cmd[1])
+			id := GetValueID(cmd[1])
+			status := network.SendFindValue(id.String())
 			fresp.WriteString(status)
 
 		case "exit":
@@ -43,7 +45,7 @@ func (network *Network) InitializeCLI() {
 			os.Exit(0)
 
 		case "ping":
-			status := network.SendPingMessage(cmd[1])
+			status := network.SendPing(cmd[1])
 			fresp.WriteString(status)
 
 		case "print_id":
@@ -53,6 +55,7 @@ func (network *Network) InitializeCLI() {
 		case "response:":
 		default:
 			fmt.Println("Invalid command: " + cmd[0])
+			fresp.WriteString("Invalid command\n")
 		}
 	}
 }

@@ -4,9 +4,13 @@ package kademlia
 // depend on any other structs.
 
 import (
+	"bytes"
+	"crypto/sha1"
+	"encoding/gob"
+	"fmt"
 	"log"
 	"strconv"
-  "strings"
+	"strings"
 )
 
 // Used to test an error and crash if it isnt nil.
@@ -19,7 +23,7 @@ func AssertAndCrash(err error) {
 }
 
 // Used to parse the port number from an ip address.
-func ParsePortNumber(address string) int {
+func ParsePortNumber(address string) (string, int) {
 	var i int
 	var c rune
 	for i, c = range address {
@@ -31,11 +35,11 @@ func ParsePortNumber(address string) int {
 	sl := len(address)
 	if i == sl {
 		log.Fatal("Cannot parse port from address: " + address)
-		return -1
+		return "", -1
 	} else {
 		n, err := strconv.Atoi(address[i+1 : sl])
 		AssertAndCrash(err)
-		return n
+		return address[0:i], n
 	}
 }
 
@@ -50,11 +54,39 @@ func GetRPCName(code byte) string {
 		return "FINDVAL"
 	case RPC_FINDCONTACT:
 		return "FINDCONTACT"
+	case RPC_NODELOOKUP:
+		return "NODELOOKUP"
 	default:
 		return "[ERR]"
 	}
 }
 
+// data string value -> kademlia id
+func GetValueID(val string) *KademliaID {
+	sha := sha1.New()
+	sha.Write([]byte(val))
+	sum := sha.Sum(nil)
+	s := fmt.Sprintf("%x", sum)
+	return NewKademliaID(s)
+}
+
+// Format contact list to printable string
+func ParseContactList(raw []byte) string {
+	byte_buffer := bytes.NewBuffer(raw)
+	var data []Contact
+	decoder := gob.NewDecoder(byte_buffer)
+	err := decoder.Decode(&data)
+	AssertAndCrash(err)
+
+	ret := ""
+	for _, e := range data {
+		line := fmt.Sprintf("<%s, %s>", e.Address, e.ID.String())
+		ret = ret + line
+	}
+
+	return ret
+}
+
 func Trim(s string) string {
-  return strings.ReplaceAll(strings.TrimSpace(s), "\x00", "")
+	return strings.ReplaceAll(strings.TrimSpace(s), "\x00", "")
 }

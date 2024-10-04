@@ -1,26 +1,5 @@
 package kademlia
 
-// ===== REQ UDP PROTOCOL
-// Byte 0:
-//		0x0: PING
-//		0x1: STORE
-//		0x2: FINDNODE
-//		0x3: FINDVAL
-// Byte 1-2:
-// 		Validity UUID (byte 1: random, byte 2: port)
-// Byte 3:
-//		Param 1 Length (In bytes)
-// Byte 4:
-//		Param 2 Length (In bytes)
-// Bytes 5-END:
-//		Param data stream
-//
-// Max message size = 256*2 + 3 bytes
-
-// ===== RESP UDP PROTOCOL
-// Byte 0-1: Auth UUID
-// Byte 2-END: Data
-
 import (
 	"bytes"
 	"encoding/gob"
@@ -35,105 +14,228 @@ func (network *Network) JoinNetwork(init_addr string) {
 	bootstrap_id := NewKademliaID(os.Getenv("BOOTSTRAP_NODE_ID"))
 	network.routing_table.AddContact(NewContact(bootstrap_id, init_addr))
 
-	// No response handling necessary, but we should still wait for it
-	network.SendAndWait(init_addr, RPC_FINDCONTACT, []byte(os.Getenv("BOOTSTRAP_NODE_ID")), nil)
+	var params = make(byte_arr_list, 1)
+	target_node_id := network.routing_table.me.ID.String()
+	params[0] = []byte(target_node_id)
+	_ = network.SendAndWait(init_addr, RPC_NODELOOKUP, params)
 }
 
 // SendPingMessage handles a PING request.
 // If target is this node, send ping response to original requester.
 // Otherwise, find the closest node and send a PING rpc to it.
-func (network *Network) ManagePingMessage(aid *AuthID, req_addr string, target_id string) {
-	target := NewKademliaID(target_id)
+func (network *Network) ManagePing(aid *AuthID, req_addr string, target_node_id string) {
+	target := NewKademliaID(target_node_id)
 	if target.Equals(network.routing_table.me.ID) {
 		fmt.Printf("Responding to PING from %s\n", req_addr)
-		response := []byte(fmt.Sprintf("Ping response from %s", target_id))
-		network.SendResponse(aid, req_addr, response)
-	} else {
-		fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
-		closest_contacts := network.routing_table.FindClosestContacts(target, 1)
-
-		if len(closest_contacts) == 0 {
-			fmt.Printf("No closest node found")
-			return
-		}
-
-		closest_node := closest_contacts[0]
-		resp := network.SendAndWait(closest_node.Address, RPC_PING, []byte(target_id), nil)
-		network.SendResponse(aid, req_addr, resp)
-	}
-}
-
-// Get "alpha" closest nodes from k-buckets and send simultaneous reqs.
-// collect a list of the k-closest nodes and send back to client.
-func (network *Network) ManageFindContactMessage(aid *AuthID, req_addr string, target_id string) {
-	target := NewKademliaID(target_id)
-	closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
-	var b bytes.Buffer
-	enc := gob.NewEncoder(&b)
-	err := enc.Encode(closest_contacts)
-	AssertAndCrash(err)
-	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
-	network.SendResponse(aid, req_addr, b.Bytes())
-}
-
-// Same as findnode, but if the target is node, return a value instead.
-func (network *Network) ManageFindDataMessage(aid *AuthID, req_addr string, target_id string) {
-	target := NewKademliaID(target_id)
-	closest_contacts := network.routing_table.FindClosestContacts(target, ALPHA)
-
-	for _, contact := range closest_contacts {
-		fmt.Printf("Sending FindData request to: %s\n", contact.Address)
-		response := network.SendAndWait(contact.Address, RPC_FINDVAL, target[:], []byte{})
-
-		// Check if response is empty during the network communication failure
-		if len(response) == 0 {
-			fmt.Printf("No response or invalid response received from %s\n", contact.Address)
-			continue // Skip to the next contact
-		}
-
-		// Check if the first byte of the response indicates data found
-		if len(response) > 1 && response[0] == 0x01 {
-			fmt.Printf("Data found for target %x at %s\n", target_id, contact.Address)
-			network.SendResponse(aid, req_addr, response[1:])
-
-		} else if len(response) > 1 && response[0] == 0x00 {
-			fmt.Printf("Target %x is a node; continuing search.\n", target_id)
-			continue
-		}
+		network.SendResponse(aid, req_addr, RESP_PING_OK, nil)
+		return
 	}
 
-	fmt.Println(req_addr)
-	network.SendResponse(aid, req_addr, nil)
+	fmt.Printf("Target is not this node. Finding closest node to %s\n", target.String())
+	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
+
+	if len(closest_contacts) == 0 {
+		fmt.Printf("No closest node found")
+		response := []byte(fmt.Sprintf("No closest node found"))
+		network.SendResponse(aid, req_addr, RESP_PING_FAIL, response)
+		return
+	}
+
+	closest := closest_contacts[0]
+	network.routing_table.me.CalcDistance(target)
+	closest.CalcDistance(target)
+	if network.routing_table.me.Less(&closest) {
+		fmt.Printf("No closer node found")
+		response := []byte(fmt.Sprintf("No closer node found"))
+		network.SendResponse(aid, req_addr, RESP_PING_FAIL, response)
+		return
+	}
+
+	var response = make(byte_arr_list, 1)
+	response[0] = []byte(target_node_id)
+	resp := network.SendAndWait(closest.Address, RPC_PING, response)
+	network.SendResponse(aid, req_addr, resp.Rpc, nil)
 }
 
 // Same as PING but send additional metadata that gets stored. Send an OK to original client.
-func (network *Network) ManageStoreMessage(aid *AuthID, addr string, target_id []byte, value []byte) {
+func (network *Network) ManageStore(aid *AuthID, req_addr string, value_id string, value string) {
+	target := NewKademliaID(value_id)
+	closest := network.routing_table.FindClosestContacts(target, 1)[0]
+	network.routing_table.me.CalcDistance(target)
+	closest.CalcDistance(target)
+	if network.routing_table.me.Less(&closest) {
+		if network.data_store.EntryExists(target) {
+			fmt.Printf("Entry already exists: %s:%s, req from %s\n", value_id, value, req_addr)
+			network.SendResponse(aid, req_addr, RESP_STORE_EXISTS, nil)
+			return
+		}
+
+		fmt.Printf("Adding entry to store: %s:%s, req from %s\n", value_id, value, req_addr)
+		network.data_store.Store(target, value)
+		network.SendResponse(aid, req_addr, RESP_STORE_OK, nil)
+		return
+	}
+
+	var params = make(byte_arr_list, 2)
+	params[0] = []byte(value_id)
+	params[1] = []byte(value)
+	response := network.SendAndWait(closest.Address, RPC_STORE, params)
+	network.SendResponse(aid, req_addr, response.Rpc, nil)
+
 }
 
-// PUT.
-// Send a STORE RPC and return the status message string
-func (network *Network) SendStoreValueMessage(target_id string, value []byte) string {
-	return "Not implemented yet"
+// Same as findnode, but if the target is node, return a value instead.
+func (network *Network) ManageFindData(aid *AuthID, req_addr string, value_id string) {
+	target := NewKademliaID(value_id)
+	closest_contacts := network.routing_table.FindClosestContacts(target, PARAM_K)
+	if network.data_store.EntryExists(target) {
+		fmt.Println("Value found")
+		network.SendResponse(aid, req_addr, RESP_VALFOUND, []byte(network.data_store.GetEntry(target)))
+		return
+	}
+
+	var contact_buffer bytes.Buffer
+	encoder := gob.NewEncoder(&contact_buffer)
+	err := encoder.Encode(closest_contacts)
+	AssertAndCrash(err)
+	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
+	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_buffer.Bytes())
 }
 
-// GET.
-// Send a FINDVAL RPC and return the status message string
-func (network *Network) SendFindValueMessage(value_id string) string {
-	return "Not implemented yet"
+// Get k closest nodes from k-buckets and return
+func (network *Network) ManageFindContact(aid *AuthID, req_addr string, target_node_id string) {
+	target := NewKademliaID(target_node_id)
+	closest_contacts := network.routing_table.FindClosestContacts(target, PARAM_K)
+	var contact_buffer bytes.Buffer
+	encoder := gob.NewEncoder(&contact_buffer)
+	err := encoder.Encode(closest_contacts)
+	AssertAndCrash(err)
+	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
+	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_buffer.Bytes())
 }
 
-// PING.
+func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_node_id string) {
+	target := NewKademliaID(target_node_id)
+	closest := network.routing_table.FindClosestContacts(target, ALPHA)
+	var resps [ALPHA]NetworkMessage
+
+	var params = make(byte_arr_list, 1)
+	params[0] = []byte(target_node_id)
+
+	for i, c := range closest {
+		resps[i] = network.SendAndWait(c.Address, RPC_FINDVAL, params)
+	}
+}
+
 // Send a PING RPC to the network and return the status message string.
-func (network *Network) SendPingMessage(target_id string) string {
-	target := NewKademliaID(string(target_id))
+func (network *Network) SendPing(target_node_id string) string {
+	target := NewKademliaID(target_node_id)
+	if network.routing_table.me.ID.Equals(target) {
+		fmt.Println("Ping is this node")
+		return fmt.Sprintf("Ping response from %s\n", target_node_id)
+	}
+
 	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
 	if len(closest_contacts) == 0 {
 		fmt.Println("No closest node found\n")
 		return "No closest node found\n"
 	}
-	closestNode := closest_contacts[0]
-	ping_msg := append([]byte{}, []byte(target_id)...)
-	my_ip := network.routing_table.me.Address
-	resp := network.SendAndWait(closestNode.Address, RPC_PING, ping_msg, []byte(my_ip))
-	return string(resp) + "\n"
+
+	closest_node := closest_contacts[0]
+	var params = make(byte_arr_list, 1)
+	params[0] = []byte(target_node_id)
+	resp := network.SendAndWait(closest_node.Address, RPC_PING, params)
+
+	switch resp.Rpc {
+	case RESP_PING_OK:
+		return fmt.Sprintf("Ping response from %s\n", target_node_id)
+	case RESP_PING_FAIL:
+		return fmt.Sprintf("Ping fail; %s\n", resp.Data[0])
+	default:
+		return fmt.Sprintf("ERR: %+v\n", resp)
+	}
+}
+
+// Send a STORE RPC and return the status message string
+func (network *Network) SendStore(value_key string, value []byte) string {
+	target := NewKademliaID(value_key)
+	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
+	if len(closest_contacts) == 0 {
+		fmt.Println("No closest node found")
+		return "No closest node found\n"
+	}
+
+	closest_node := closest_contacts[0]
+	network.routing_table.me.CalcDistance(target)
+	closest_node.CalcDistance(target)
+	if network.routing_table.me.Less(&closest_node) {
+		fmt.Printf("Adding entry to store: %s:%s, at self\n", target.String(), value)
+		network.data_store.Store(target, string(value))
+		return "Stored value at self\n"
+	}
+
+	var params = make(byte_arr_list, 2)
+	params[0] = []byte(target.String())
+	params[1] = []byte(value)
+	resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)
+
+	switch resp.Rpc {
+	case RESP_STORE_OK:
+		return "Value has been stored in the network\n"
+	case RESP_STORE_EXISTS:
+		return "Value already exists\n"
+	default:
+		return fmt.Sprintf("ERR: %+v\n", resp)
+	}
+}
+
+// Send a FINDVAL RPC and return the status message string
+func (network *Network) SendFindValue(value_key string) string {
+	target := NewKademliaID(value_key)
+	if network.data_store.EntryExists(target) {
+		fmt.Println("Value found")
+		return network.data_store.GetEntry(target) + "\n"
+	}
+
+	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
+	if len(closest_contacts) == 0 {
+		fmt.Println("No closest node found")
+		return "No closest node found\n"
+	}
+	closest_node := closest_contacts[0]
+	var params = make(byte_arr_list, 1)
+	params[0] = []byte(target.String())
+	resp := network.SendAndWait(closest_node.Address, RPC_FINDVAL, params)
+
+	switch resp.Rpc {
+	case RESP_VALFOUND:
+		return fmt.Sprintf("Value: %s\n", resp.Data[0])
+	case RESP_CONTACTS:
+		return fmt.Sprintf("%s\n", ParseContactList(resp.Data[0]))
+	default:
+		return fmt.Sprintf("ERR: %+v\n", resp)
+	}
+}
+
+// Send a FIND_NODE rpc and return the status message strong
+func (network *Network) SendFindContact(addr string, target_node_id *KademliaID) string {
+	target := NewKademliaID(target_node_id.String())
+
+	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
+	if len(closest_contacts) == 0 {
+		fmt.Println("No closest node found")
+		return "No closest node found\n"
+	}
+
+	closest_node := closest_contacts[0]
+	var params = make(byte_arr_list, 1)
+	params[0] = []byte(target.String())
+	resp := network.SendAndWait(closest_node.Address, RPC_FINDVAL, params)
+
+	switch resp.Rpc {
+	case RESP_CONTACTS:
+		return fmt.Sprintf("%s\n", ParseContactList(resp.Data[0]))
+	default:
+		return fmt.Sprintf("ERR: %+v\n", resp)
+	}
 }
