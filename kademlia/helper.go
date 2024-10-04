@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 )
 
 // Used to test an error and crash if it isnt nil.
@@ -84,4 +85,8 @@ func ParseContactList(raw []byte) string {
 	}
 
 	return ret
+}
+
+func Trim(s string) string {
+	return strings.ReplaceAll(strings.TrimSpace(s), "\x00", "")
 }

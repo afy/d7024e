@@ -61,6 +61,10 @@ func NewNetworkMessage(rpc byte, node_id *KademliaID, auth_id *AuthID, data byte
 	return &NetworkMessage{rpc, node_id.String(), auth_id.String(), data}
 }
 
+func (network *Network) GetID() string {
+	return network.routing_table.me.ID.String()
+}
+
 // Create a new Network instance with random id,
 // Unless it is the bootstrap node, whose nodeid is configured in the .env file.
 func NewNetwork(this_ip string, port string) *Network {
@@ -90,6 +94,9 @@ func (network *Network) GetFirstOpenPort() *PortData {
 	max_ind := PRANGE_MAX - PRANGE_MIN
 	for i := 0; i <= max_ind; i++ {
 		port := network.dynamic_ports[i]
+
+		// Using port.open is more reliable than attempting to bind.
+		// It is read-only here, port should only be set in SendAndWait()
 		if port.open {
 			return port
 		}

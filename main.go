@@ -22,7 +22,9 @@ func main() {
 	if !is_bootstrap {
 		fmt.Println("Attempting to join network...")
 		net.JoinNetwork("bootstrap-node:" + os.Getenv("BOOTSTRAP_PORT"))
-	}
+	} else {
+    fmt.Printf("Running bootstrap node on port %s\n", port)
+  }
 
 	for {
 		kademlia.UpdateTimers()
