@@ -8,7 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
+  "time"
 )
 
 const MAX_PACKET_SIZE = 1024 // UDP packet buffer size.
@@ -48,13 +48,14 @@ type NetworkMessage struct {
 	Rpc         byte          `json:"rpc"`
 	Src_node_id string        `json:"src_node_id"`
   Src_port    int           `json:"src_port"`
+  Resp_port   int           `json:"resp_port"`
 	Aid         string        `json:"aid"`
 	Data        byte_arr_list `json:"data"`
 }
 
 // Wrapper func for json data sent over network
-func NewNetworkMessage(rpc byte, node_id *KademliaID, src_port int, auth_id *AuthID, data byte_arr_list) *NetworkMessage {
-	return &NetworkMessage{rpc, node_id.String(), src_port, auth_id.String(), data}
+func NewNetworkMessage(rpc byte, node_id *KademliaID, src_port int, resp_port int, auth_id *AuthID, data byte_arr_list) *NetworkMessage {
+	return &NetworkMessage{rpc, node_id.String(), src_port, resp_port, auth_id.String(), data}
 }
 
 func (network *Network) GetID() string {
@@ -96,69 +97,56 @@ func (network *Network) GetNextPort() int {
 func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_list) NetworkMessage {
 	chan_msg := make(chan NetworkMessage)
 	go func() {
-    req_port := network.GetNextPort()
-    max_retries := 10
-    retry_count := 0
-
-    var req_conn net.Conn
-
-    for retry_count < max_retries {
-      addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", req_port))
-		  AssertAndCrash(err)
-		  dialer := net.Dialer{
-			  LocalAddr: addr,
-			  Timeout:   time.Duration(5 * float64(time.Second)), // great design choice
-		  }
-      
-      req_conn, err = dialer.Dial("udp", dist_ip)
-
-      if err != nil && err.Error() == "bind: address already in use" {
-        retry_count++
-        continue
-      }
-      
-      if err == nil {
-        break
-      }
-      
-      AssertAndCrash(err)
-    }
+    resp_port := network.GetNextPort()
+    req_conn, err := net.Dial("udp", dist_ip)
 
 		// No defer; close connection directly after sending UDP packet
-    fmt.Printf("RPC: Sent RPC %s to %s from :%d\n", GetRPCName(rpc), dist_ip, req_port)
+    fmt.Printf("RPC: Sent RPC %s to %s from :%d\n", GetRPCName(rpc), dist_ip, resp_port)
 
 		// Format network packet (see docs)
 		aid_req := GenerateAuthID()
-		msg := NewNetworkMessage(rpc, network.routing_table.me.ID, network.GetPort(), aid_req, params)
+		msg := NewNetworkMessage(rpc, network.routing_table.me.ID, network.GetPort(), resp_port, aid_req, params)
 		msg_bytes, err := json.Marshal(msg)
 		AssertAndCrash(err)
 
-		_, err = req_conn.Write(msg_bytes)
-		req_conn.Close()
-		AssertAndCrash(err)
+    read_ready := make(chan struct{})
+     
+    go func() {
+      // Wait for response, where the auth id:s match
+      resp_conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", resp_port))
+      AssertAndCrash(err)
+      defer resp_conn.Close()
+      fmt.Printf("RPC: Waiting on :%d\n", resp_port)
 
-		// Wait for response, where the auth id:s match
-		resp_conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", req_port))
-		AssertAndCrash(err)
-		defer resp_conn.Close()
-    fmt.Printf("RPC: Waiting on :%d\n", req_port)
+      for {
+        resp_buf := make([]byte, MAX_PACKET_SIZE)
 
-		for {
-			resp_buf := make([]byte, MAX_PACKET_SIZE)
-			n, _, err := resp_conn.ReadFrom(resp_buf)
-			AssertAndCrash(err)
+        select {
+          case <- read_ready:
+          default:
+            close(read_ready)
+        }
 
-			var ret_msg *NetworkMessage
-			errd := json.Unmarshal(resp_buf[:n], &ret_msg)
-			AssertAndCrash(errd)
+        n, _, err := resp_conn.ReadFrom(resp_buf)
+        AssertAndCrash(err)
 
-			if ret_msg.Aid == aid_req.String() {
-        fmt.Printf("RPC: Response recieved on :%d\n", req_port)
-				chan_msg <- *ret_msg
-				break
-			}
-		}
-	}()
+        var ret_msg *NetworkMessage
+        errd := json.Unmarshal(resp_buf[:n], &ret_msg)
+        AssertAndCrash(errd)
+
+        if ret_msg.Aid == aid_req.String() {
+          fmt.Printf("RPC: Response recieved on :%d\n", resp_port)
+          chan_msg <- *ret_msg
+          break
+        }
+      }
+    }()
+    <- read_ready
+    time.Sleep(10 * time.Microsecond)
+    _, err = req_conn.Write(msg_bytes)
+    req_conn.Close()
+    AssertAndCrash(err)
+  }()
 	return <-chan_msg
 }
 
@@ -193,7 +181,7 @@ func (network *Network) SendResponse(aid *AuthID, dist_ip string, response_rpc b
 	}
 	resp := make(byte_arr_list, 1)
 	resp[0] = response
-  msg := NewNetworkMessage(response_rpc, network.routing_table.me.ID, network.GetPort(), aid, resp)
+  msg := NewNetworkMessage(response_rpc, network.routing_table.me.ID, network.GetPort(), -1, aid, resp)
 	network.Send(dist_ip, msg)
 }
 
@@ -201,7 +189,7 @@ func (network *Network) SendResponse(aid *AuthID, dist_ip string, response_rpc b
 // Essentially SendAndWait without response handling
 func (network *Network) SendRPC(dist_ip string, rpc byte, params byte_arr_list) {
 	aid_req := GenerateAuthID()
-	msg := NewNetworkMessage(rpc, network.routing_table.me.ID, network.GetPort(), aid_req, params)
+	msg := NewNetworkMessage(rpc, network.routing_table.me.ID, network.GetPort(), -1, aid_req, params)
 	network.Send(dist_ip, msg)
 }
 
@@ -235,6 +223,7 @@ func (network *Network) Listen() *Network {
 
 		// Update routing table
 		src_ip, _ := ParsePortNumber(addr.String())
+    resp_addr := fmt.Sprintf("%s:%d", src_ip, msg.Resp_port)
     network.routing_table.AddContact(NewContact(NewKademliaID(msg.Src_node_id), fmt.Sprintf("%s:%d", src_ip, msg.Src_port)))
 		for _, b := range network.routing_table.buckets {
 			for e := b.list.Front(); e != nil; e = e.Next() {
@@ -245,22 +234,22 @@ func (network *Network) Listen() *Network {
 		switch msg.Rpc {
 		case RPC_PING:
 			target := strings.TrimSpace(string(msg.Data[0]))
-			go network.ManagePing(aid, addr.String(), target)
+			go network.ManagePing(aid, resp_addr, target)
 
 		case RPC_STORE:
-			go network.ManageStore(aid, addr.String(), string(msg.Data[0]), string(msg.Data[1]))
+			go network.ManageStore(aid, resp_addr, string(msg.Data[0]), string(msg.Data[1]))
 
 		case RPC_FINDCONTACT:
 			target := strings.TrimSpace(string(msg.Data[0]))
-			go network.ManageFindContact(aid, addr.String(), target)
+			go network.ManageFindContact(aid, resp_addr, target)
 
 		case RPC_FINDVAL:
 			target := strings.TrimSpace(string(msg.Data[0]))
-			go network.ManageFindData(aid, addr.String(), target)
+			go network.ManageFindData(aid, resp_addr, target)
 
 		case RPC_NODELOOKUP:
 			target := strings.TrimSpace(string(msg.Data[0]))
-			go network.ManageNodeLookup(aid, addr.String(), target)
+			go network.ManageNodeLookup(aid, resp_addr, target)
 
 		default:
 			fmt.Printf("Main: Invalid RPC: %s\n", string(msg.Rpc))

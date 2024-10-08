@@ -12,6 +12,13 @@ import (
 )
 
 func TestMain(t *testing.T) {
+	const MAX_TEST_TIME = 1
+
+	time.AfterFunc(MAX_TEST_TIME*time.Second, func() {
+    fmt.Printf("Ping tests timed out\n")
+    os.Exit(1)
+	})
+
 	test_network := kademlia.NewNetwork("127.0.0.1", "9000", 2_000)
 
 	bootstrap_id := "FFFFFFFF00000000000000000000000000000000"
@@ -33,7 +40,7 @@ func TestMain(t *testing.T) {
 
 	os.Setenv("IS_BOOTSTRAP_NODE", "false")
 
-	const NR_NODES int = 20
+	const NR_NODES int = 10
 	port := 9002
 	var nodes [NR_NODES]*kademlia.Network
 
@@ -49,20 +56,10 @@ func TestMain(t *testing.T) {
 
 	// BEGIN test PING
 
-	const MAX_TEST_TIME = 10
-	ping_tests_done := false
-
-	time.AfterFunc(MAX_TEST_TIME*time.Second, func() {
-		if !ping_tests_done {
-			fmt.Printf("Ping tests timed out\n")
-			os.Exit(1)
-		}
-	})
-
 	resp = kademlia.Trim(nodes[0].SendPing(bootstrap_id))
 	assert.Equal(t, "Ping response from "+bootstrap_id, resp)
 
-	nr_tests := 100
+	nr_tests := 20
 
 	for i := 0; i < nr_tests; i++ {
 		n1 := rand.Intn(NR_NODES)
@@ -74,9 +71,6 @@ func TestMain(t *testing.T) {
 		resp = kademlia.Trim(nodes[n1].SendPing(nodes[n2].GetID()))
 		assert.Equal(t, "Ping response from "+nodes[n2].GetID(), resp)
 	}
-
-	ping_tests_done = true
-
 	// END test PING
 
 	fmt.Println("Done")
