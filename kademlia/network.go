@@ -88,6 +88,9 @@ func (network *Network) ManageStore(aid *AuthID, req_addr string, value_id strin
 func (network *Network) ManageFindData(aid *AuthID, req_addr string, value_id string) {
 	target := NewKademliaID(value_id)
 	closest_contacts := network.routing_table.FindClosestContacts(target, PARAM_K)
+
+  fmt.Printf("%+v\n", closest_contacts)
+
 	if network.data_store.EntryExists(target) {
 		fmt.Println("Value found")
 		network.SendResponse(aid, req_addr, RESP_VALFOUND, []byte(network.data_store.GetEntry(target)))
@@ -123,8 +126,9 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 	params[0] = []byte(target_node_id)
 
 	for i, c := range closest {
-		resps[i] = network.SendAndWait(c.Address, RPC_FINDVAL, params)
+		resps[i] = network.SendAndWait(c.Address, RPC_FINDCONTACT, params)
 	}
+  network.SendResponse(aid, req_addr, RESP_CONTACTS, nil)
 }
 
 // Send a PING RPC to the network and return the status message string.

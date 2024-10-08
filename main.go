@@ -12,7 +12,7 @@ func main() {
 	if port == "" {
 		port = "8008"
 	}
-	net := kademlia.NewNetwork("0.0.0.0", port)
+	net := kademlia.NewNetwork("0.0.0.0", port, 10_000)
 	go net.Listen()
 	go net.InitializeCLI()
 

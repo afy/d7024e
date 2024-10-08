@@ -12,31 +12,36 @@ import (
 )
 
 func TestMain(t *testing.T) {
+	test_network := kademlia.NewNetwork("127.0.0.1", "9000", 2_000)
+
 	bootstrap_id := "FFFFFFFF00000000000000000000000000000000"
 	os.Setenv("PORT", "9001")
 	os.Setenv("IS_BOOTSTRAP_NODE", "true")
 	os.Setenv("BOOTSTRAP_PORT", "9001")
 	os.Setenv("BOOTSTRAP_NODE_ID", bootstrap_id)
 
-	test_network := kademlia.NewNetwork("localhost", "9000")
+  fmt.Println("Starting bootstrap node...")
 
 	go main()
-
-	test_network.JoinNetwork("localhost:" + os.Getenv("BOOTSTRAP_PORT"))
+  
+  go test_network.Listen()
+  time.Sleep(200 * time.Millisecond)
+	test_network.JoinNetwork("127.0.0.1:" + os.Getenv("BOOTSTRAP_PORT"))
+  fmt.Println("Bootstrap node started")
 	resp := kademlia.Trim(test_network.SendPing(bootstrap_id))
 	assert.Equal(t, "Ping response from "+bootstrap_id, resp)
 
 	os.Setenv("IS_BOOTSTRAP_NODE", "false")
 
-	const NR_NODES int = 10
+	const NR_NODES int = 20
 	port := 9002
 	var nodes [NR_NODES]*kademlia.Network
 
 	for i := 0; i < NR_NODES; i++ {
-		node := kademlia.NewNetwork("localhost", fmt.Sprintf("%d", port))
+		node := kademlia.NewNetwork("127.0.0.1", fmt.Sprintf("%d", port), 10_100 + i * 100)
 		go node.Listen()
 		// network.InitializeCLI()
-		node.JoinNetwork("localhost:" + os.Getenv("BOOTSTRAP_PORT"))
+		node.JoinNetwork("127.0.0.1:" + os.Getenv("BOOTSTRAP_PORT"))
 		port++
 		nodes[i] = node
 		fmt.Printf("Node %d created\n", i+1)
@@ -57,7 +62,7 @@ func TestMain(t *testing.T) {
 	resp = kademlia.Trim(nodes[0].SendPing(bootstrap_id))
 	assert.Equal(t, "Ping response from "+bootstrap_id, resp)
 
-	nr_tests := 20
+	nr_tests := 100
 
 	for i := 0; i < nr_tests; i++ {
 		n1 := rand.Intn(NR_NODES)
