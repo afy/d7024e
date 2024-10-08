@@ -137,7 +137,7 @@ func (network *Network) SendPing(target_node_id string) string {
 
 	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
 	if len(closest_contacts) == 0 {
-		fmt.Println("No closest node found\n")
+		fmt.Println("No closest node found")
 		return "No closest node found\n"
 	}
 

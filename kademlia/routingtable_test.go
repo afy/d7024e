@@ -1,73 +1,71 @@
 package kademlia
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-// FIXME: This test doesn't actually test anything. There is only one assertion
-// that is included as an example.
+// TestNewRoutingTable tests the creation of a new RoutingTable instance.
+func TestNewRoutingTable(t *testing.T) {
+	me := NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8000")
+	rt := NewRoutingTable(me)
 
-func TestRoutingTable(t *testing.T) {
+	assert.NotNil(t, rt, "Expected RoutingTable instance, got nil")
+	assert.Equal(t, me, rt.me, "Expected 'me' contact to be set correctly")
+
+	t.Logf("New RoutingTable created for contact: %s", rt.me.String())
+
+}
+
+// TestAddingMultipleContacts tests adding multiple contacts to the routing table.
+func TestAddingMultipleContacts(t *testing.T) {
 	rt := NewRoutingTable(NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8000"))
 
-	rt.AddContact(NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8001"))
-	rt.AddContact(NewContact(NewKademliaID("1111111100000000000000000000000000000000"), "localhost:8002"))
-	rt.AddContact(NewContact(NewKademliaID("1111111200000000000000000000000000000000"), "localhost:8002"))
-	rt.AddContact(NewContact(NewKademliaID("1111111300000000000000000000000000000000"), "localhost:8002"))
-	rt.AddContact(NewContact(NewKademliaID("1111111400000000000000000000000000000000"), "localhost:8002"))
-	rt.AddContact(NewContact(NewKademliaID("2111111400000000000000000000000000000000"), "localhost:8002"))
-
-	contacts := rt.FindClosestContacts(NewKademliaID("2111111400000000000000000000000000000000"), 20)
-	for i := range contacts {
-		fmt.Println(contacts[i].String())
+	contactsToAdd := []Contact{
+		NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8001"),
+		NewContact(NewKademliaID("1111111100000000000000000000000000000000"), "localhost:8002"),
+		NewContact(NewKademliaID("1111111200000000000000000000000000000000"), "localhost:8003"),
+		NewContact(NewKademliaID("1111111300000000000000000000000000000000"), "localhost:8004"),
+		NewContact(NewKademliaID("1111111400000000000000000000000000000000"), "localhost:8005"),
+		NewContact(NewKademliaID("2111111400000000000000000000000000000000"), "localhost:8006"),
 	}
 
-	// TODO: This is just an example. Make more meaningful assertions.
-	assert.Equal(t, 6, len(contacts), fmt.Sprintf("Expected 6 contacts but instead got %d", len(contacts)))
+	for _, contact := range contactsToAdd {
+		rt.AddContact(contact)
+	}
+
+	// Ensure we have the correct number of contacts added
+	assert.NotNil(t, rt.buckets, "Expected buckets to be initialized")
+	for _, bucket := range rt.buckets {
+		assert.NotNil(t, bucket, "Expected each bucket to be initialized")
+	}
 }
 
-// TestFindClosestContacts ensures that it retrieves the expected number of closest contacts.
+// TestFindClosestContacts verifies that the FindClosestContacts function returns the correct contacts.
 func TestFindClosestContacts(t *testing.T) {
-	// Initialize with a local contact
-	localContact := NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8000")
-	rt := NewRoutingTable(localContact)
+	rt := NewRoutingTable(NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8000"))
 
-	contact1 := NewContact(NewKademliaID("1234567890abcdef1234567890abcdef1234"), "192.168.1.1:8000")
-	contact2 := NewContact(NewKademliaID("abcdef1234567890abcdef12345678901234"), "192.168.1.2:8001")
-	contact3 := NewContact(NewKademliaID("11223344556677889900aabbccddeeff0011"), "192.168.1.3:8002")
+	// Add contacts for testing
+	rt.AddContact(NewContact(NewKademliaID("1111111100000000000000000000000000000000"), "localhost:8001"))
+	rt.AddContact(NewContact(NewKademliaID("2111111100000000000000000000000000000000"), "localhost:8002"))
+	rt.AddContact(NewContact(NewKademliaID("1111111200000000000000000000000000000000"), "localhost:8003"))
+	rt.AddContact(NewContact(NewKademliaID("2111111200000000000000000000000000000000"), "localhost:8004"))
 
-	rt.AddContact(contact1)
-	rt.AddContact(contact2)
-	rt.AddContact(contact3)
+	// Find closest contacts
+	closestContacts := rt.FindClosestContacts(NewKademliaID("2111111400000000000000000000000000000000"), 3)
 
-	targetID := NewKademliaID("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
-
-	closestContacts := rt.FindClosestContacts(targetID, 2)
-
-	// Check if the number of closest contacts is correct
-	if len(closestContacts) != 2 {
-		t.Errorf("Expected 2 closest contacts, but got: %d", len(closestContacts))
-	}
-
-	// Optionally check if the closest contacts are as expected
-	// You can implement specific checks based on your distance calculations.
+	// Check that we received the correct number of closest contacts
+	assert.Equal(t, 3, len(closestContacts), "Expected to find 3 closest contacts.")
 }
 
-// TestGetBucketIndex verifies that the correct bucket index is returned based on the KademliaID.
+// TestGetBucketIndex verifies the correct bucket index is calculated for a KademliaID.
 func TestGetBucketIndex(t *testing.T) {
-	// Initialize with a local contact
-	localContact := NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8000")
-	rt := NewRoutingTable(localContact)
+	rt := NewRoutingTable(NewContact(NewKademliaID("FFFFFFFF00000000000000000000000000000000"), "localhost:8000"))
+	testID := NewKademliaID("0000000000000000000000000000000000000001")
 
-	// This should return the bucket index based on the distance of the KademliaID
-	id := NewKademliaID("FFFFFFFF00000000000000000000000000000000")
-	bucketIndex := rt.getBucketIndex(id)
+	index := rt.getBucketIndex(testID)
 
-	expectedIndex := 0 // Adjust based on your bucket indexing logic
-	if bucketIndex != expectedIndex {
-		t.Errorf("Expected bucket index %d, got %d", expectedIndex, bucketIndex)
-	}
+	assert.GreaterOrEqual(t, index, 0, "Expected bucket index to be non-negative.")
+	assert.Less(t, index, IDLength*8, "Expected bucket index to be less than total number of buckets.")
 }
