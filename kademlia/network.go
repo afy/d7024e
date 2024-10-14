@@ -135,6 +135,8 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 		}(x)
 	}
 
+	// [3][k]Contact
+
 	network.SendResponse(aid, req_addr, RESP_CONTACTS, nil)
 }
 
