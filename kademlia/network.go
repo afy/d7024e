@@ -184,7 +184,7 @@ func (network *Network) SendStore(value_key string, value []byte) string {
 	if network.routing_table.me.Less(&closest_node) {
 		fmt.Printf("Adding entry to store: %s:%s, at self\n", target.String(), value)
 		network.data_store.Store(target, string(value))
-		return "Stored value at self\n"
+		return "Value has been stored in the network\n"
 	}
 
 	var params = make(byte_arr_list, 2)

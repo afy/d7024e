@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const MAX_PACKET_SIZE = 1024 // UDP packet buffer size.
+const MAX_PACKET_SIZE = 2048 // UDP packet buffer size.
 // const PRANGE_MIN = 10_000    // Lower component of port range.
 const MAX_PORTS = 100 // Upper component of port range.
 const ALPHA = 3       // For node lookup; how many nodes to query
@@ -126,6 +126,7 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_li
 				default:
 					close(read_ready)
 				}
+
 
 				n, _, err := resp_conn.ReadFrom(resp_buf)
 				AssertAndCrash(err)

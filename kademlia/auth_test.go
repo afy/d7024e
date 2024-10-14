@@ -1,6 +1,9 @@
 package kademlia
 
-import "testing"
+import (
+  "testing"
+  "fmt"
+)
 
 func TestNewAuthID(t *testing.T) {
 	b1 := [20]byte{
@@ -62,6 +65,7 @@ func TestString(t *testing.T) {
 	}
 	valid := "1234567890abcdef1234567890abcdef12345678"
 	a1 := AuthID{b1}
+  fmt.Println(a1.String() + "\n" + valid)
 	if a1.String() != valid {
 		t.Error("String does not return correct result")
 	}
