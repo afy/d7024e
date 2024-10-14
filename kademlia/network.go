@@ -91,7 +91,8 @@ func (network *Network) ManageFindData(aid *AuthID, req_addr string, value_id st
 
 	if network.data_store.EntryExists(target) {
 		fmt.Println("Value found")
-		network.SendResponse(aid, req_addr, RESP_VALFOUND, []byte(network.data_store.GetEntry(target)))
+		val, _ := network.data_store.GetEntry(target)
+		network.SendResponse(aid, req_addr, RESP_VALFOUND, []byte(val))
 		return
 	}
 
@@ -204,7 +205,8 @@ func (network *Network) SendFindValue(value_key string) string {
 	target := NewKademliaID(value_key)
 	if network.data_store.EntryExists(target) {
 		fmt.Println("Value found")
-		return network.data_store.GetEntry(target) + "\n"
+		val, _ := network.data_store.GetEntry(target)
+		return val + "\n"
 	}
 
 	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
