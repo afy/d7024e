@@ -17,7 +17,7 @@ func NewAuthID(d [20]byte) *AuthID {
 }
 
 // Generate a new auth id.
-func GenerateAuthID() *AuthID {
+func GenerateRandomAuthID() *AuthID {
 	rnd := make([]byte, 20)
 	_, err := rand.Read(rnd)
 	if err != nil {

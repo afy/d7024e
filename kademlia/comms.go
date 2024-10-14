@@ -104,7 +104,7 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_li
 		fmt.Printf("RPC: Sent RPC %s to %s from :%d\n", GetRPCName(rpc), dist_ip, resp_port)
 
 		// Format network packet (see docs)
-		aid_req := GenerateAuthID()
+		aid_req := GenerateRandomAuthID()
 		msg := NewNetworkMessage(rpc, network.routing_table.me.ID, network.GetPort(), resp_port, aid_req, params)
 		msg_bytes, err := json.Marshal(msg)
 		AssertAndCrash(err)
@@ -188,7 +188,7 @@ func (network *Network) SendResponse(aid *AuthID, dist_ip string, response_rpc b
 // network.Send but with RPC parsing
 // Essentially SendAndWait without response handling
 func (network *Network) SendRPC(dist_ip string, rpc byte, params byte_arr_list) {
-	aid_req := GenerateAuthID()
+	aid_req := GenerateRandomAuthID()
 	msg := NewNetworkMessage(rpc, network.routing_table.me.ID, network.GetPort(), -1, aid_req, params)
 	network.Send(dist_ip, msg)
 }
