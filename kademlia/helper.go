@@ -72,21 +72,33 @@ func GetValueID(val string) *KademliaID {
 
 // Format contact list to printable string
 func ParseContactList(raw []byte) string {
-	byte_buffer := bytes.NewBuffer(raw)
-	var data []Contact
-	decoder := gob.NewDecoder(byte_buffer)
-	err := decoder.Decode(&data)
-	AssertAndCrash(err)
-
+	buff := bytes.NewBuffer(raw)
+	data := NetDeserialize[[]Contact](buff.Bytes())
 	ret := ""
 	for _, e := range data {
 		line := fmt.Sprintf("<%s, %s>", e.Address, e.ID.String())
 		ret = ret + line
 	}
-
 	return ret
 }
 
 func Trim(s string) string {
 	return strings.ReplaceAll(strings.TrimSpace(s), "\x00", "")
+}
+
+func NetSerialize[T any](data any) []byte {
+	var buff bytes.Buffer
+	encoder := gob.NewEncoder(&buff)
+	err := encoder.Encode(data)
+	AssertAndCrash(err)
+	return buff.Bytes()
+}
+
+func NetDeserialize[T any](data []byte) T {
+	byte_buffer := bytes.NewBuffer(data)
+	var ret T
+	decoder := gob.NewDecoder(byte_buffer)
+	err := decoder.Decode(&ret)
+	AssertAndCrash(err)
+	return ret
 }
