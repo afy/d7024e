@@ -16,6 +16,8 @@ const MAX_PACKET_SIZE = 2048 // UDP packet buffer size.
 const MAX_PORTS = 100 // Upper component of port range.
 const ALPHA = 3       // For node lookup; how many nodes to query
 const PARAM_K = 20    // "k" value specified in original paper
+const RPC_TIMEOUT = 5 * time.Second
+
 const (
 	// RPC Codes (byte[0] = 0)
 	RPC_NIL         byte = 0x00

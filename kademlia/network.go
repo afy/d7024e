@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+  "time"
 )
 
 // Send a request to the bootstrap node (init_addr) to join the network.
@@ -238,7 +239,6 @@ func (network *Network) SendStore(value_key string, value []byte) string {
 		params[1] = []byte(value)
 		resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)
 		}*/
-
 	var fc_params = make(byte_arr_list, 2)
 	fc_params[0] = []byte(target.String())
 	node_msg := network.SendAndWait(network.routing_table.me.Address, RPC_NODELOOKUP, fc_params)
@@ -251,11 +251,15 @@ func (network *Network) SendStore(value_key string, value []byte) string {
 	for _, n := range nodes {
 		go func(node Contact) {
 			store_resp := network.SendAndWait(node.Address, RPC_STORE, params)
-			if store_resp.Rpc == RESP_VALFOUND {
+			if store_resp.Rpc == RESP_STORE_OK {
 				ch <- store_resp
 			}
 		}(n)
 	}
+
+  time.AfterFunc(RPC_TIMEOUT, func() {
+    close(ch)
+  })
 
 	resp := <-ch
 
