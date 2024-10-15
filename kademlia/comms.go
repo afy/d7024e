@@ -8,14 +8,16 @@ import (
 	"os"
 	"strconv"
 	"strings"
-  "time"
+	"time"
 )
 
-const MAX_PACKET_SIZE = 1024 // UDP packet buffer size.
+const MAX_PACKET_SIZE = 2048 // UDP packet buffer size.
 // const PRANGE_MIN = 10_000    // Lower component of port range.
-const MAX_PORTS = 100    // Upper component of port range.
-const ALPHA = 3              // For node lookup; how many nodes to query
-const PARAM_K = 20           // "k" value specified in original paper
+const MAX_PORTS = 100 // Upper component of port range.
+const ALPHA = 3       // For node lookup; how many nodes to query
+const PARAM_K = 20    // "k" value specified in original paper
+const RPC_TIMEOUT = 5 * time.Second
+
 const (
 	// RPC Codes (byte[0] = 0)
 	RPC_NIL         byte = 0x00
@@ -40,15 +42,15 @@ type byte_arr_list [][]byte
 type Network struct {
 	routing_table *RoutingTable
 	data_store    *Store
-  min_port      int
-  offset_port   int
+	min_port      int
+	offset_port   int
 }
 
 type NetworkMessage struct {
 	Rpc         byte          `json:"rpc"`
 	Src_node_id string        `json:"src_node_id"`
-  Src_port    int           `json:"src_port"`
-  Resp_port   int           `json:"resp_port"`
+	Src_port    int           `json:"src_port"`
+	Resp_port   int           `json:"resp_port"`
 	Aid         string        `json:"aid"`
 	Data        byte_arr_list `json:"data"`
 }
@@ -63,8 +65,8 @@ func (network *Network) GetID() string {
 }
 
 func (network *Network) GetPort() int {
-  _, port := ParsePortNumber(network.routing_table.me.Address)
-  return port
+	_, port := ParsePortNumber(network.routing_table.me.Address)
+	return port
 }
 
 // Create a new Network instance with random id,
@@ -78,75 +80,75 @@ func NewNetwork(this_ip string, port string, min_port int) *Network {
 	} else {
 		rtable = NewRoutingTable(NewContact(NewKademliaID(os.Getenv("BOOTSTRAP_NODE_ID")), addr))
 	}
-	
+
 	store := NewStore()
 	fmt.Printf("NodeId: %s\n", rtable.me.ID.String())
 	return &Network{rtable, store, min_port, 0}
 }
 
 func (network *Network) GetNextPort() int {
-  offset := network.offset_port
-  network.offset_port++
-  if network.offset_port >= MAX_PORTS {
-    network.offset_port = 0
-  }
-  return network.min_port + offset
+	offset := network.offset_port
+	network.offset_port++
+	if network.offset_port >= MAX_PORTS {
+		network.offset_port = 0
+	}
+	return network.min_port + offset
 }
 
 // Send a UDP packet to a node/client. Then, start waiting for a UDP packet on same port.
 func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_list) NetworkMessage {
 	chan_msg := make(chan NetworkMessage)
 	go func() {
-    resp_port := network.GetNextPort()
-    req_conn, err := net.Dial("udp", dist_ip)
+		resp_port := network.GetNextPort()
+		req_conn, err := net.Dial("udp", dist_ip)
 
 		// No defer; close connection directly after sending UDP packet
-    fmt.Printf("RPC: Sent RPC %s to %s from :%d\n", GetRPCName(rpc), dist_ip, resp_port)
+		fmt.Printf("RPC: Sent RPC %s to %s from :%d\n", GetRPCName(rpc), dist_ip, resp_port)
 
 		// Format network packet (see docs)
-		aid_req := GenerateAuthID()
+		aid_req := GenerateRandomAuthID()
 		msg := NewNetworkMessage(rpc, network.routing_table.me.ID, network.GetPort(), resp_port, aid_req, params)
 		msg_bytes, err := json.Marshal(msg)
 		AssertAndCrash(err)
 
-    read_ready := make(chan struct{})
-     
-    go func() {
-      // Wait for response, where the auth id:s match
-      resp_conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", resp_port))
-      AssertAndCrash(err)
-      defer resp_conn.Close()
-      fmt.Printf("RPC: Waiting on :%d\n", resp_port)
+		read_ready := make(chan struct{})
 
-      for {
-        resp_buf := make([]byte, MAX_PACKET_SIZE)
+		go func() {
+			// Wait for response, where the auth id:s match
+			resp_conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", resp_port))
+			AssertAndCrash(err)
+			defer resp_conn.Close()
+			fmt.Printf("RPC: Waiting on :%d\n", resp_port)
 
-        select {
-          case <- read_ready:
-          default:
-            close(read_ready)
-        }
+			for {
+				resp_buf := make([]byte, MAX_PACKET_SIZE)
 
-        n, _, err := resp_conn.ReadFrom(resp_buf)
-        AssertAndCrash(err)
+				select {
+				case <-read_ready:
+				default:
+					close(read_ready)
+				}
 
-        var ret_msg *NetworkMessage
-        errd := json.Unmarshal(resp_buf[:n], &ret_msg)
-        AssertAndCrash(errd)
+				n, _, err := resp_conn.ReadFrom(resp_buf)
+				AssertAndCrash(err)
 
-        if ret_msg.Aid == aid_req.String() {
-          fmt.Printf("RPC: Response recieved on :%d\n", resp_port)
-          chan_msg <- *ret_msg
-          break
-        }
-      }
-    }()
-    <- read_ready
-    time.Sleep(10 * time.Microsecond)
-    _, err = req_conn.Write(msg_bytes)
-    req_conn.Close()
-    AssertAndCrash(err)
-  }()
+				var ret_msg *NetworkMessage
+				errd := json.Unmarshal(resp_buf[:n], &ret_msg)
+				AssertAndCrash(errd)
+
+				if ret_msg.Aid == aid_req.String() {
+					fmt.Printf("RPC: Response recieved on :%d\n", resp_port)
+					chan_msg <- *ret_msg
+					break
+				}
+			}
+		}()
+		<-read_ready
+		time.Sleep(10 * time.Microsecond)
+		_, err = req_conn.Write(msg_bytes)
+		req_conn.Close()
+		AssertAndCrash(err)
+	}()
 	return <-chan_msg
 }
 
@@ -181,14 +183,14 @@ func (network *Network) SendResponse(aid *AuthID, dist_ip string, response_rpc b
 	}
 	resp := make(byte_arr_list, 1)
 	resp[0] = response
-  msg := NewNetworkMessage(response_rpc, network.routing_table.me.ID, network.GetPort(), -1, aid, resp)
+	msg := NewNetworkMessage(response_rpc, network.routing_table.me.ID, network.GetPort(), -1, aid, resp)
 	network.Send(dist_ip, msg)
 }
 
 // network.Send but with RPC parsing
 // Essentially SendAndWait without response handling
 func (network *Network) SendRPC(dist_ip string, rpc byte, params byte_arr_list) {
-	aid_req := GenerateAuthID()
+	aid_req := GenerateRandomAuthID()
 	msg := NewNetworkMessage(rpc, network.routing_table.me.ID, network.GetPort(), -1, aid_req, params)
 	network.Send(dist_ip, msg)
 }
@@ -208,7 +210,7 @@ func (network *Network) Listen() *Network {
 			log.Println(err)
 			continue
 		}
-    // TODO: Move to separate function
+		// TODO: Move to separate function
 		var msg NetworkMessage
 		err2 := json.Unmarshal(buf[:n], &msg)
 		if err2 != nil {
@@ -219,12 +221,12 @@ func (network *Network) Listen() *Network {
 		var aid_bytes [20]byte
 		copy([]byte(msg.Aid)[:], aid_bytes[:20])
 		aid := NewAuthID(aid_bytes)
-		fmt.Printf("Main: Received: %s (%x) from %s (%s)\n", GetRPCName(msg.Rpc), msg.Rpc, msg.Src_node_id, addr)
+		fmt.Printf("Main: Received: %s (%x) from %s (%s -> %d)\n", GetRPCName(msg.Rpc), msg.Rpc, msg.Src_node_id, addr, msg.Resp_port)
 
 		// Update routing table
 		src_ip, _ := ParsePortNumber(addr.String())
-    resp_addr := fmt.Sprintf("%s:%d", src_ip, msg.Resp_port)
-    network.routing_table.AddContact(NewContact(NewKademliaID(msg.Src_node_id), fmt.Sprintf("%s:%d", src_ip, msg.Src_port)))
+		resp_addr := fmt.Sprintf("%s:%d", src_ip, msg.Resp_port)
+		network.routing_table.AddContact(NewContact(NewKademliaID(msg.Src_node_id), fmt.Sprintf("%s:%d", src_ip, msg.Src_port)))
 		for _, b := range network.routing_table.buckets {
 			for e := b.list.Front(); e != nil; e = e.Next() {
 				fmt.Printf("%s\n", e.Value)

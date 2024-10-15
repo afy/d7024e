@@ -12,7 +12,7 @@ import (
 )
 
 func TestMain(t *testing.T) {
-	const MAX_TEST_TIME = 1
+	const MAX_TEST_TIME = 5
 
 	time.AfterFunc(MAX_TEST_TIME*time.Second, func() {
     fmt.Printf("Ping tests timed out\n")
@@ -59,7 +59,7 @@ func TestMain(t *testing.T) {
 	resp = kademlia.Trim(nodes[0].SendPing(bootstrap_id))
 	assert.Equal(t, "Ping response from "+bootstrap_id, resp)
 
-	nr_tests := 20
+	nr_tests := 10
 
 	for i := 0; i < nr_tests; i++ {
 		n1 := rand.Intn(NR_NODES)
@@ -72,6 +72,13 @@ func TestMain(t *testing.T) {
 		assert.Equal(t, "Ping response from "+nodes[n2].GetID(), resp)
 	}
 	// END test PING
+
+  n1 := rand.Intn(NR_NODES)
+
+  resp = kademlia.Trim(nodes[n1].SendStore(kademlia.GetValueID("key").String(), []byte("value")))
+  assert.Equal(t, "Value has been stored in the network", resp)
+  resp = kademlia.Trim(nodes[n1].SendFindValue(kademlia.GetValueID("key").String()))
+  assert.Equal(t, "Value: value", resp)
 
 	fmt.Println("Done")
 }

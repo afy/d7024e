@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"log"
+  "fmt"
 )
 
 // A struct used to verify message integrity in RPC responses, since ports can be re-used.
@@ -17,7 +18,7 @@ func NewAuthID(d [20]byte) *AuthID {
 }
 
 // Generate a new auth id.
-func GenerateAuthID() *AuthID {
+func GenerateRandomAuthID() *AuthID {
 	rnd := make([]byte, 20)
 	_, err := rand.Read(rnd)
 	if err != nil {
@@ -34,5 +35,5 @@ func (auth_id *AuthID) Equals(a AuthID) bool {
 }
 
 func (auth_id *AuthID) String() string {
-	return string(auth_id.value[:])
+	return fmt.Sprintf("%x", auth_id.value[:])
 }

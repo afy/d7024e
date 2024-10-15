@@ -1,10 +1,10 @@
 package kademlia
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"os"
+	"sort"
+  "time"
 )
 
 // Send a request to the bootstrap node (init_addr) to join the network.
@@ -17,7 +17,19 @@ func (network *Network) JoinNetwork(init_addr string) {
 	var params = make(byte_arr_list, 1)
 	target_node_id := network.routing_table.me.ID.String()
 	params[0] = []byte(target_node_id)
-	_ = network.SendAndWait(init_addr, RPC_NODELOOKUP, params)
+	resp := network.SendAndWait(init_addr, RPC_NODELOOKUP, params)
+
+	// Send ping to nodes
+	nodes := NetDeserialize[[]Contact](resp.Data[0])
+	fmt.Println("NODES:")
+	fmt.Printf("%+v\n", nodes)
+	for _, node := range nodes {
+		if node.ID.Equals(network.routing_table.me.ID) {
+			continue
+		}
+		network.routing_table.AddContact(node)
+		network.SendPing(node.ID.String())
+	}
 }
 
 // SendPingMessage handles a PING request.
@@ -88,47 +100,89 @@ func (network *Network) ManageStore(aid *AuthID, req_addr string, value_id strin
 func (network *Network) ManageFindData(aid *AuthID, req_addr string, value_id string) {
 	target := NewKademliaID(value_id)
 	closest_contacts := network.routing_table.FindClosestContacts(target, PARAM_K)
-
-  fmt.Printf("%+v\n", closest_contacts)
+	fmt.Printf("%+v\n", closest_contacts)
 
 	if network.data_store.EntryExists(target) {
 		fmt.Println("Value found")
-		network.SendResponse(aid, req_addr, RESP_VALFOUND, []byte(network.data_store.GetEntry(target)))
+		val, _ := network.data_store.GetEntry(target)
+		network.SendResponse(aid, req_addr, RESP_VALFOUND, []byte(val))
 		return
 	}
 
-	var contact_buffer bytes.Buffer
-	encoder := gob.NewEncoder(&contact_buffer)
-	err := encoder.Encode(closest_contacts)
-	AssertAndCrash(err)
+	contact_bytes := NetSerialize[[]Contact](closest_contacts)
 	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
-	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_buffer.Bytes())
+	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_bytes)
 }
 
 // Get k closest nodes from k-buckets and return
 func (network *Network) ManageFindContact(aid *AuthID, req_addr string, target_node_id string) {
 	target := NewKademliaID(target_node_id)
 	closest_contacts := network.routing_table.FindClosestContacts(target, PARAM_K)
-	var contact_buffer bytes.Buffer
-	encoder := gob.NewEncoder(&contact_buffer)
-	err := encoder.Encode(closest_contacts)
-	AssertAndCrash(err)
+	contact_bytes := NetSerialize[[]Contact](closest_contacts)
 	fmt.Printf("Main listener: Sent response to: %s\n", req_addr)
-	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_buffer.Bytes())
+	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_bytes)
 }
 
 func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_node_id string) {
 	target := NewKademliaID(target_node_id)
 	closest := network.routing_table.FindClosestContacts(target, ALPHA)
-	var resps [ALPHA]NetworkMessage
-
 	var params = make(byte_arr_list, 1)
 	params[0] = []byte(target_node_id)
 
-	for i, c := range closest {
-		resps[i] = network.SendAndWait(c.Address, RPC_FINDCONTACT, params)
+	first_pass_ch := make(chan []Contact, ALPHA)
+	recursion_result := make(chan []Contact, ALPHA)
+	var shortlist []Contact
+
+	// First-pass: Send alpha requests and initiate second (recursive) step when they return
+	for _, c := range closest {
+		go func() {
+			resp := network.SendAndWait(c.Address, RPC_FINDCONTACT, params)
+			first_pass_ch <- NetDeserialize[[]Contact](resp.Data[0])
+			shortlist = append(shortlist, c)
+		}()
 	}
-  network.SendResponse(aid, req_addr, RESP_CONTACTS, nil)
+
+	// recursive case
+	for _, _ = range closest {
+		x := <-first_pass_ch
+		go func(unqueried []Contact) {
+			var ret []Contact
+			for len(unqueried) > 0 {
+				// prevent loop by sending FC to self
+				if !(unqueried[0].ID.Equals(network.routing_table.me.ID)) {
+					resp := network.SendAndWait(unqueried[0].Address, RPC_FINDCONTACT, params)
+
+					ret = append(ret, NetDeserialize[[]Contact](resp.Data[0])...)
+				}
+				unqueried = unqueried[1:]
+			}
+			recursion_result <- ret
+		}(x)
+	}
+
+	// Wait for recursion steps to finish
+	for _, _ = range closest {
+		res := <-recursion_result
+		sl := append(shortlist, res...)
+
+		var slp []*Contact
+
+		for _, n := range sl {
+			n.CalcDistance(target)
+			slp = append(slp, &n)
+		}
+
+		sort.Slice(slp, func(i, j int) bool {
+			return (*slp[i]).Less(slp[j])
+		})
+
+		if len(sl) > PARAM_K {
+			shortlist = sl[:PARAM_K]
+		}
+	}
+
+	contact_bytes := NetSerialize[[]Contact](shortlist)
+	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_bytes)
 }
 
 // Send a PING RPC to the network and return the status message string.
@@ -144,6 +198,8 @@ func (network *Network) SendPing(target_node_id string) string {
 		fmt.Println("No closest node found")
 		return "No closest node found\n"
 	}
+
+	fmt.Printf("%+v\n", closest_contacts)
 
 	closest_node := closest_contacts[0]
 	var params = make(byte_arr_list, 1)
@@ -169,19 +225,43 @@ func (network *Network) SendStore(value_key string, value []byte) string {
 		return "No closest node found\n"
 	}
 
-	closest_node := closest_contacts[0]
-	network.routing_table.me.CalcDistance(target)
-	closest_node.CalcDistance(target)
-	if network.routing_table.me.Less(&closest_node) {
-		fmt.Printf("Adding entry to store: %s:%s, at self\n", target.String(), value)
-		network.data_store.Store(target, string(value))
-		return "Stored value at self\n"
-	}
+	/*
+		closest_node := closest_contacts[0]
+		network.routing_table.me.CalcDistance(target)
+		closest_node.CalcDistance(target)
+		if network.routing_table.me.Less(&closest_node) {
+			fmt.Printf("Adding entry to store: %s:%s, at self\n", target.String(), value)
+			network.data_store.Store(target, string(value))
+			return "Value has been stored in the network\n"
+
+				var params = make(byte_arr_list, 2)
+		params[0] = []byte(target.String())
+		params[1] = []byte(value)
+		resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)
+		}*/
+	var fc_params = make(byte_arr_list, 2)
+	fc_params[0] = []byte(target.String())
+	node_msg := network.SendAndWait(network.routing_table.me.Address, RPC_NODELOOKUP, fc_params)
+	nodes := NetDeserialize[[]Contact](node_msg.Data[0])
 
 	var params = make(byte_arr_list, 2)
 	params[0] = []byte(target.String())
 	params[1] = []byte(value)
-	resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)
+	ch := make(chan NetworkMessage, 1)
+	for _, n := range nodes {
+		go func(node Contact) {
+			store_resp := network.SendAndWait(node.Address, RPC_STORE, params)
+			if store_resp.Rpc == RESP_STORE_OK {
+				ch <- store_resp
+			}
+		}(n)
+	}
+
+  time.AfterFunc(RPC_TIMEOUT, func() {
+    close(ch)
+  })
+
+	resp := <-ch
 
 	switch resp.Rpc {
 	case RESP_STORE_OK:
@@ -198,7 +278,8 @@ func (network *Network) SendFindValue(value_key string) string {
 	target := NewKademliaID(value_key)
 	if network.data_store.EntryExists(target) {
 		fmt.Println("Value found")
-		return network.data_store.GetEntry(target) + "\n"
+		val, _ := network.data_store.GetEntry(target)
+		return val + "\n"
 	}
 
 	closest_contacts := network.routing_table.FindClosestContacts(target, 1)
