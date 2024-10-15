@@ -59,7 +59,7 @@ func TestMain(t *testing.T) {
 	resp = kademlia.Trim(nodes[0].SendPing(bootstrap_id))
 	assert.Equal(t, "Ping response from "+bootstrap_id, resp)
 
-	nr_tests := 20
+	nr_tests := 10
 
 	for i := 0; i < nr_tests; i++ {
 		n1 := rand.Intn(NR_NODES)

@@ -19,7 +19,12 @@ func (network *Network) JoinNetwork(init_addr string) {
 	resp := network.SendAndWait(init_addr, RPC_NODELOOKUP, params)
 
 	// Send ping to nodes
-	fmt.Println(ParseContactList(resp.Data[0]))
+  nodes := NetDeserialize[[]Contact](resp.Data[0])
+  fmt.Println("NODES:")
+  fmt.Printf("%+v\n", nodes)
+  for _,node := range nodes {
+    network.SendPing(node.ID.String())
+  }
 }
 
 // SendPingMessage handles a PING request.
@@ -128,6 +133,7 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 		go func() {
 			resp := network.SendAndWait(c.Address, RPC_FINDCONTACT, params)
 			first_pass_ch <- NetDeserialize[[]Contact](resp.Data[0])
+      shortlist = append(shortlist, c)
 		}()
 	}
 
@@ -144,8 +150,6 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 				}
 				unqueried = unqueried[1:]
 			}
-			fmt.Printf("a- %+v\n", shortlist)
-			fmt.Printf("b- %+v\n", unqueried)
 			recursion_result <- ret
 		}(x)
 	}
@@ -154,7 +158,6 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 	for _, _ = range closest {
 		res := <-recursion_result
 		shortlist = append(shortlist, res...)
-		fmt.Printf("%+v\n", shortlist)
 		sort.Slice(shortlist, func(i, j int) bool {
 			return shortlist[i].Less(&shortlist[j])
 		})
@@ -181,6 +184,8 @@ func (network *Network) SendPing(target_node_id string) string {
 		fmt.Println("No closest node found")
 		return "No closest node found\n"
 	}
+
+  fmt.Printf("%+v\n", closest_contacts)
 
 	closest_node := closest_contacts[0]
 	var params = make(byte_arr_list, 1)
