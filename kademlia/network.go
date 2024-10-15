@@ -19,16 +19,16 @@ func (network *Network) JoinNetwork(init_addr string) {
 	resp := network.SendAndWait(init_addr, RPC_NODELOOKUP, params)
 
 	// Send ping to nodes
-  nodes := NetDeserialize[[]Contact](resp.Data[0])
-  fmt.Println("NODES:")
-  fmt.Printf("%+v\n", nodes)
-  for _,node := range nodes {
-    if node.ID.Equals(network.routing_table.me.ID) {
-      continue
-    }
-    network.routing_table.AddContact(node)
-    network.SendPing(node.ID.String())
-  }
+	nodes := NetDeserialize[[]Contact](resp.Data[0])
+	fmt.Println("NODES:")
+	fmt.Printf("%+v\n", nodes)
+	for _, node := range nodes {
+		if node.ID.Equals(network.routing_table.me.ID) {
+			continue
+		}
+		network.routing_table.AddContact(node)
+		network.SendPing(node.ID.String())
+	}
 }
 
 // SendPingMessage handles a PING request.
@@ -137,7 +137,7 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 		go func() {
 			resp := network.SendAndWait(c.Address, RPC_FINDCONTACT, params)
 			first_pass_ch <- NetDeserialize[[]Contact](resp.Data[0])
-      shortlist = append(shortlist, c)
+			shortlist = append(shortlist, c)
 		}()
 	}
 
@@ -150,8 +150,8 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 				// prevent loop by sending FC to self
 				if !(unqueried[0].ID.Equals(network.routing_table.me.ID)) {
 					resp := network.SendAndWait(unqueried[0].Address, RPC_FINDCONTACT, params)
-					
-          ret = append(ret, NetDeserialize[[]Contact](resp.Data[0])...)
+
+					ret = append(ret, NetDeserialize[[]Contact](resp.Data[0])...)
 				}
 				unqueried = unqueried[1:]
 			}
@@ -162,21 +162,21 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 	// Wait for recursion steps to finish
 	for _, _ = range closest {
 		res := <-recursion_result
-    sl := append(shortlist, res...)
+		sl := append(shortlist, res...)
 
-    var slp []*Contact
+		var slp []*Contact
 
-    for _, n := range sl {
-      n.CalcDistance(target)
-      slp = append(slp, &n)
-    } 
+		for _, n := range sl {
+			n.CalcDistance(target)
+			slp = append(slp, &n)
+		}
 
-    sort.Slice(slp, func(i, j int) bool {
+		sort.Slice(slp, func(i, j int) bool {
 			return (*slp[i]).Less(slp[j])
 		})
 
-		if len(sl) > 20 {
-			shortlist = sl[:20]
+		if len(sl) > PARAM_K {
+			shortlist = sl[:PARAM_K]
 		}
 	}
 
@@ -198,7 +198,7 @@ func (network *Network) SendPing(target_node_id string) string {
 		return "No closest node found\n"
 	}
 
-  fmt.Printf("%+v\n", closest_contacts)
+	fmt.Printf("%+v\n", closest_contacts)
 
 	closest_node := closest_contacts[0]
 	var params = make(byte_arr_list, 1)
@@ -224,19 +224,40 @@ func (network *Network) SendStore(value_key string, value []byte) string {
 		return "No closest node found\n"
 	}
 
-	closest_node := closest_contacts[0]
-	network.routing_table.me.CalcDistance(target)
-	closest_node.CalcDistance(target)
-	if network.routing_table.me.Less(&closest_node) {
-		fmt.Printf("Adding entry to store: %s:%s, at self\n", target.String(), value)
-		network.data_store.Store(target, string(value))
-		return "Value has been stored in the network\n"
-	}
+	/*
+		closest_node := closest_contacts[0]
+		network.routing_table.me.CalcDistance(target)
+		closest_node.CalcDistance(target)
+		if network.routing_table.me.Less(&closest_node) {
+			fmt.Printf("Adding entry to store: %s:%s, at self\n", target.String(), value)
+			network.data_store.Store(target, string(value))
+			return "Value has been stored in the network\n"
+
+				var params = make(byte_arr_list, 2)
+		params[0] = []byte(target.String())
+		params[1] = []byte(value)
+		resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)
+		}*/
+
+	var fc_params = make(byte_arr_list, 2)
+	fc_params[0] = []byte(target.String())
+	node_msg := network.SendAndWait(network.routing_table.me.Address, RPC_NODELOOKUP, fc_params)
+	nodes := NetDeserialize[[]Contact](node_msg.Data[0])
 
 	var params = make(byte_arr_list, 2)
 	params[0] = []byte(target.String())
 	params[1] = []byte(value)
-	resp := network.SendAndWait(closest_node.Address, RPC_STORE, params)
+	ch := make(chan NetworkMessage, 1)
+	for _, n := range nodes {
+		go func(node Contact) {
+			store_resp := network.SendAndWait(node.Address, RPC_STORE, params)
+			if store_resp.Rpc == RESP_VALFOUND {
+				ch <- store_resp
+			}
+		}(n)
+	}
+
+	resp := <-ch
 
 	switch resp.Rpc {
 	case RESP_STORE_OK:
