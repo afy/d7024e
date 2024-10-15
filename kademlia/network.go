@@ -135,15 +135,17 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 	for _, _ = range closest {
 		x := <-first_pass_ch
 		go func(unqueried []Contact) {
-			ret := make([]Contact, 1)
+			var ret []Contact
 			for len(unqueried) > 0 {
 				// prevent loop by sending FC to self
 				if !(unqueried[0].ID.Equals(network.routing_table.me.ID)) {
-					resp := network.SendAndWait(unqueried[0].Address, RPC_FINDVAL, params)
+					resp := network.SendAndWait(unqueried[0].Address, RPC_FINDCONTACT, params)
 					ret = append(ret, NetDeserialize[[]Contact](resp.Data[0])...)
 				}
 				unqueried = unqueried[1:]
 			}
+			fmt.Printf("a- %+v\n", shortlist)
+			fmt.Printf("b- %+v\n", unqueried)
 			recursion_result <- ret
 		}(x)
 	}
@@ -152,9 +154,11 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 	for _, _ = range closest {
 		res := <-recursion_result
 		shortlist = append(shortlist, res...)
+		fmt.Printf("%+v\n", shortlist)
 		sort.Slice(shortlist, func(i, j int) bool {
 			return shortlist[i].Less(&shortlist[j])
 		})
+
 		if len(shortlist) > 20 {
 			shortlist = shortlist[:20]
 		}

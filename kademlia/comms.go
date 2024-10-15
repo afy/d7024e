@@ -13,9 +13,9 @@ import (
 
 const MAX_PACKET_SIZE = 2048 // UDP packet buffer size.
 // const PRANGE_MIN = 10_000    // Lower component of port range.
-const MAX_PORTS = 3 // Upper component of port range.
-const ALPHA = 3     // For node lookup; how many nodes to query
-const PARAM_K = 20  // "k" value specified in original paper
+const MAX_PORTS = 100 // Upper component of port range.
+const ALPHA = 3       // For node lookup; how many nodes to query
+const PARAM_K = 20    // "k" value specified in original paper
 const (
 	// RPC Codes (byte[0] = 0)
 	RPC_NIL         byte = 0x00
