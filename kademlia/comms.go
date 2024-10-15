@@ -13,9 +13,9 @@ import (
 
 const MAX_PACKET_SIZE = 2048 // UDP packet buffer size.
 // const PRANGE_MIN = 10_000    // Lower component of port range.
-const MAX_PORTS = 100 // Upper component of port range.
-const ALPHA = 3       // For node lookup; how many nodes to query
-const PARAM_K = 20    // "k" value specified in original paper
+const MAX_PORTS = 3 // Upper component of port range.
+const ALPHA = 3     // For node lookup; how many nodes to query
+const PARAM_K = 20  // "k" value specified in original paper
 const (
 	// RPC Codes (byte[0] = 0)
 	RPC_NIL         byte = 0x00
@@ -127,7 +127,6 @@ func (network *Network) SendAndWait(dist_ip string, rpc byte, params byte_arr_li
 					close(read_ready)
 				}
 
-
 				n, _, err := resp_conn.ReadFrom(resp_buf)
 				AssertAndCrash(err)
 
@@ -220,7 +219,7 @@ func (network *Network) Listen() *Network {
 		var aid_bytes [20]byte
 		copy([]byte(msg.Aid)[:], aid_bytes[:20])
 		aid := NewAuthID(aid_bytes)
-		fmt.Printf("Main: Received: %s (%x) from %s (%s)\n", GetRPCName(msg.Rpc), msg.Rpc, msg.Src_node_id, addr)
+		fmt.Printf("Main: Received: %s (%x) from %s (%s -> %d)\n", GetRPCName(msg.Rpc), msg.Rpc, msg.Src_node_id, addr, msg.Resp_port)
 
 		// Update routing table
 		src_ip, _ := ParsePortNumber(addr.String())

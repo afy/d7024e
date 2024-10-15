@@ -3,6 +3,7 @@ package kademlia
 import (
 	"fmt"
 	"os"
+	"sort"
 )
 
 // Send a request to the bootstrap node (init_addr) to join the network.
@@ -15,8 +16,10 @@ func (network *Network) JoinNetwork(init_addr string) {
 	var params = make(byte_arr_list, 1)
 	target_node_id := network.routing_table.me.ID.String()
 	params[0] = []byte(target_node_id)
-	_ = network.SendAndWait(init_addr, RPC_NODELOOKUP, params)
+	resp := network.SendAndWait(init_addr, RPC_NODELOOKUP, params)
 
+	// Send ping to nodes
+	fmt.Println(ParseContactList(resp.Data[0]))
 }
 
 // SendPingMessage handles a PING request.
@@ -117,7 +120,8 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 	params[0] = []byte(target_node_id)
 
 	first_pass_ch := make(chan []Contact, ALPHA)
-	//var final_result [PARAM_K]Contact
+	recursion_result := make(chan []Contact, ALPHA)
+	var shortlist []Contact
 
 	// First-pass: Send alpha requests and initiate second (recursive) step when they return
 	for _, c := range closest {
@@ -130,14 +134,34 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 	// recursive case
 	for _, _ = range closest {
 		x := <-first_pass_ch
-		go func(resp []Contact) {
-			// ...
+		go func(unqueried []Contact) {
+			ret := make([]Contact, 1)
+			for len(unqueried) > 0 {
+				// prevent loop by sending FC to self
+				if !(unqueried[0].ID.Equals(network.routing_table.me.ID)) {
+					resp := network.SendAndWait(unqueried[0].Address, RPC_FINDVAL, params)
+					ret = append(ret, NetDeserialize[[]Contact](resp.Data[0])...)
+				}
+				unqueried = unqueried[1:]
+			}
+			recursion_result <- ret
 		}(x)
 	}
 
-	// [3][k]Contact
+	// Wait for recursion steps to finish
+	for _, _ = range closest {
+		res := <-recursion_result
+		shortlist = append(shortlist, res...)
+		sort.Slice(shortlist, func(i, j int) bool {
+			return shortlist[i].Less(&shortlist[j])
+		})
+		if len(shortlist) > 20 {
+			shortlist = shortlist[:20]
+		}
+	}
 
-	network.SendResponse(aid, req_addr, RESP_CONTACTS, nil)
+	contact_bytes := NetSerialize[[]Contact](shortlist)
+	network.SendResponse(aid, req_addr, RESP_CONTACTS, contact_bytes)
 }
 
 // Send a PING RPC to the network and return the status message string.
