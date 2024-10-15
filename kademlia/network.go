@@ -23,6 +23,10 @@ func (network *Network) JoinNetwork(init_addr string) {
   fmt.Println("NODES:")
   fmt.Printf("%+v\n", nodes)
   for _,node := range nodes {
+    if node.ID.Equals(network.routing_table.me.ID) {
+      continue
+    }
+    network.routing_table.AddContact(node)
     network.SendPing(node.ID.String())
   }
 }
@@ -146,7 +150,8 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 				// prevent loop by sending FC to self
 				if !(unqueried[0].ID.Equals(network.routing_table.me.ID)) {
 					resp := network.SendAndWait(unqueried[0].Address, RPC_FINDCONTACT, params)
-					ret = append(ret, NetDeserialize[[]Contact](resp.Data[0])...)
+					
+          ret = append(ret, NetDeserialize[[]Contact](resp.Data[0])...)
 				}
 				unqueried = unqueried[1:]
 			}
@@ -157,13 +162,21 @@ func (network *Network) ManageNodeLookup(aid *AuthID, req_addr string, target_no
 	// Wait for recursion steps to finish
 	for _, _ = range closest {
 		res := <-recursion_result
-		shortlist = append(shortlist, res...)
-		sort.Slice(shortlist, func(i, j int) bool {
-			return shortlist[i].Less(&shortlist[j])
+    sl := append(shortlist, res...)
+
+    var slp []*Contact
+
+    for _, n := range sl {
+      n.CalcDistance(target)
+      slp = append(slp, &n)
+    } 
+
+    sort.Slice(slp, func(i, j int) bool {
+			return (*slp[i]).Less(slp[j])
 		})
 
-		if len(shortlist) > 20 {
-			shortlist = shortlist[:20]
+		if len(sl) > 20 {
+			shortlist = sl[:20]
 		}
 	}
 

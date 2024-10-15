@@ -77,8 +77,8 @@ func TestMain(t *testing.T) {
 
   resp = kademlia.Trim(nodes[n1].SendStore(kademlia.GetValueID("key").String(), []byte("value")))
   assert.Equal(t, "Value has been stored in the network", resp)
-  // resp = kademlia.Trim(nodes[n1].SendFindValue(kademlia.GetValueID("key").String()))
-  // assert.Equal(t, "Value found: value", resp)
+  resp = kademlia.Trim(nodes[n1].SendFindValue(kademlia.GetValueID("key").String()))
+  assert.Equal(t, "Value: value", resp)
 
 	fmt.Println("Done")
 }
